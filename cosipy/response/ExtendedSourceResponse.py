@@ -29,7 +29,7 @@ class ExtendedSourceResponse(Histogram):
         Initialize an ExtendedSourceResponse object.
         """
         # Not to track the under/overflow bins
-        kwargs['track_overflow'] = False
+        # kwargs['track_overflow'] = False
 
         super().__init__(*args, **kwargs)
         
@@ -70,7 +70,8 @@ class ExtendedSourceResponse(Histogram):
         new = cls(axes, contents = contents,
                         sumw2 = sumw2,
                         unit = unit,
-                        track_overflow = track_overflow)
+                        # track_overflow = track_overflow
+        )
 
         if new.is_sparse:
             new = new.to_dense()

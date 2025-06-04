@@ -1,0 +1,14 @@
+#----------#
+# Data I/O:
+
+data_file: "" # full path
+ori_file: "" # full path
+unbinned_output: 'fits' # 'fits' or 'hdf5'
+time_bins: 15 # time bin size in seconds. Takes int, float, or list of bin edges.
+energy_bins: [1145., 1165.] # Takes list. Needs to match response.
+phi_pix_size: 3 # binning of Compton scattering anlge [deg]
+nside: 16 # healpix binning of psi chi local
+scheme: 'ring' # healpix binning of psi chi local
+tmin: 1835478000.0 # Min time cut in seconds.
+tmax: 1843513200.0 # Max time cut in seconds (3 months = 93 days).
+#----------#

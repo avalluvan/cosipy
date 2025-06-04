@@ -7,6 +7,7 @@ from scipy import integrate
 from histpy import Histogram, Axes, Axis, HealpixAxis
 
 from threeML import Band, DiracDelta, Constant, Line, Quadratic, Cubic, Quartic, StepFunction, StepFunctionUpper, Cosine_Prior, Uniform_prior, PhAbs, Gaussian
+from astromodels.functions.function import CompositeFunction
 
 def get_integrated_spectral_model(spectrum, energy_axis):
     """
@@ -56,7 +57,9 @@ def get_integrated_spectral_model(spectrum, energy_axis):
         elif isinstance(spectrum, Gaussian):
             spectrum_unit = spectrum.F.unit / spectrum.sigma.unit 
         elif isinstance(spectrum, Band_Eflux):
-            spectrum_unit = spectrum.K.unit / spectrum.a.unit
+            spectrum_unit = spectrum.K.unit / spectrum.a.unit 
+        elif isinstance(spectrum, CompositeFunction):
+            spectrum_unit = spectrum.F_1.unit / spectrum.sigma_1.unit
         else:
             try:
                 spectrum_unit = spectrum.K.unit
