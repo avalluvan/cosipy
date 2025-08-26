@@ -425,7 +425,8 @@ class COSILikeNew(PluginPrototype):
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        return plt
+        plt.show()
+        # return plt
 
 # %% 
 # --- Reset Spectrum Parameters Based on Source Name ---
@@ -580,6 +581,8 @@ def scan_log_likelihood(cosi, spectrum_attr1, values1, spectrum_attr2=None, valu
             setattr(cosi._likelihood_model.source.spectrum.main.shape, spectrum_attr1, val1)
             logL = cosi.get_log_like()
             logL_results.append(logL)
+
+        setattr(cosi._likelihood_model.source.spectrum.main.shape, spectrum_attr1, values1[np.argmax(logL_results)])
         return np.array(logL_results)
 
     else:
@@ -590,6 +593,10 @@ def scan_log_likelihood(cosi, spectrum_attr1, values1, spectrum_attr2=None, valu
             for j, val2 in enumerate(values2):
                 setattr(cosi._likelihood_model.source.spectrum.main.shape, spectrum_attr2, val2)
                 logL_grid[i, j] = cosi.get_log_like()
+
+        idx = np.unravel_index(logL_grid.argmax(), logL_grid.shape)
+        setattr(cosi._likelihood_model.source.spectrum.main.shape, spectrum_attr1, values1[idx[0]])
+        setattr(cosi._likelihood_model.source.spectrum.main.shape, spectrum_attr2, values2[idx[1]])
         return logL_grid
 
 def plot_logL_1d(values, logLs, xlabel, injected_value=None):
@@ -636,7 +643,7 @@ def main2(srcname, num_samples, bgcounts):
 
     # Build spectrum and plugin
     spectrum, spectrum_unit = build_spectrum('CasAsymmetric')
-    plot_spectrum_model(spectrum=spectrum, spectrum_unit=spectrum_unit, energy_range=(1140, 1180), num_points=121)
+    # plot_spectrum_model(spectrum=spectrum, spectrum_unit=spectrum_unit, energy_range=(1140, 1180), num_points=121)
     exposure_time = 92.34 * u.d * (num_samples / len(data['Energies'])) * 0.35
     print(len(np.where((energy_samples.value > 1130) & (energy_samples.value < 1200))[0]),
           len(np.where((data['Energies'] > 1130) & (data['Energies'] < 1200))[0]),
@@ -649,11 +656,13 @@ def main2(srcname, num_samples, bgcounts):
     model = Model(source)
     cosi.set_model(model)
 
+    return cosi
+
 # %% 
 # --- Main Execution ---
 def main():
 
-    srcname = 'CasAfullyresolved'
+    srcname = 'CasApartiallyresolved'
     num_samples = 1000
     bgcounts = 0
 
@@ -671,10 +680,12 @@ def main():
     F_values = np.geomspace(3e-4 / 10, 3e-4 * 10, 7)
     mu_values = np.linspace(1150, 1164, 5)
     sigma_values = np.linspace(1.1, 2.15, 7)
-    logL_grid = scan_log_likelihood(cosi, 'mu_1', mu_values)
-    plot_logL_1d(mu_values, logL_grid, xlabel='mu_1')
-    # logL_grid = scan_log_likelihood(cosi, 'mu', mu_values, 'sigma', sigma_values)
-    # plot_logL_2d(mu_values, sigma_values, logL_grid, xlabel='mu', ylabel='sigma')
+    # logL_grid = scan_log_likelihood(cosi, 'mu', mu_values)
+    # plot_logL_1d(mu_values, logL_grid, xlabel='mu')
+    logL_grid = scan_log_likelihood(cosi, 'mu', mu_values, 'sigma', sigma_values)
+    plot_logL_2d(mu_values, sigma_values, logL_grid, xlabel='mu', ylabel='sigma')
+
+    cosi.display_model()
 
 
 # %% 
