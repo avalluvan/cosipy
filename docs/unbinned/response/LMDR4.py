@@ -321,7 +321,7 @@ class COSILikeNew(PluginPrototype):
         # for Em, Phi, Psi, Chi in args:
         #     signal_density = compute_func(Em, Phi, Psi, Chi)
         #     signal_densities.append(signal_density)
-        with mp.Pool(processes = 10) as pool:
+        with mp.Pool(processes = 7) as pool:
             signal_densities = Quantity(pool.starmap(compute_func, args))                             # Each entry is the predicted density for one observed event
 
         background_densities = self._background_kde([energy_samples.value, phi_samples.value, chi_samples.value])        # Currently using the two KDE variables with maximal discriminating power
@@ -418,8 +418,9 @@ class COSILikeNew(PluginPrototype):
         plt.tight_layout()
         if savefig is not None:
             plt.savefig(savefig)
-        # plt.show()
-        plt.clf()
+            plt.clf()
+        else:
+            plt.show()
         # return plt
 
 # %% 
@@ -442,6 +443,32 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
         spec.sigma.min_value = 0.1
         spec.sigma.max_value = sigma.value + 5
         spec.sigma.unit = sigma.unit
+
+    elif name == 'CasAG16distribution':
+        # Triple Gaussian
+        F1 = 1.4486e-4 / u.cm / u.cm / u.s
+        mu1 = 1140.48 * u.keV
+        sigma1 = 5.99 * u.keV
+        F2 = 2.8265e-4 / u.cm / u.cm / u.s
+        mu2 = 1151.86 * u.keV
+        sigma2 = 5.03 * u.keV
+        F3 = 5.1e-5 / u.cm / u.cm / u.s
+        mu3 = 1184.79 * u.keV
+        sigma3 = 0.4 * u.keV
+        for i in [1, 2, 3]:
+            getattr(spec, f'F_{i}').value = locals()[f'F{i}'].value
+            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e3
+            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e3
+            getattr(spec, f'F_{i}').unit = locals()[f'F{i}'].unit
+            getattr(spec, f'mu_{i}').value = locals()[f'mu{i}'].value
+            getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 10
+            getattr(spec, f'mu_{i}').max_value = locals()[f'mu{i}'].value + 10
+            getattr(spec, f'mu_{i}').unit = locals()[f'mu{i}'].unit
+            getattr(spec, f'sigma_{i}').value = locals()[f'sigma{i}'].value
+            getattr(spec, f'sigma_{i}').min_value = 0.1
+            getattr(spec, f'sigma_{i}').max_value = locals()[f'sigma{i}'].value + 5
+            getattr(spec, f'sigma_{i}').unit = locals()[f'sigma{i}'].unit
+    
     else:
         # Double Gaussian
         F1 = 1e-4 / u.cm / u.cm / u.s
@@ -491,6 +518,22 @@ def build_spectrum(name):
         spectrum.F.free = False
         spectrum.mu.free = True
         spectrum.sigma.free = False
+    elif name == 'CasAG16distribution':
+        gaussian1 = Gaussian()
+        gaussian2 = Gaussian()
+        gaussian3 = Gaussian()
+        spectrum = gaussian1 + gaussian2 + gaussian3
+        spectrum = spectrum_reset(spectrum, name=name)
+        spectrum_unit = spectrum.F_1.unit / spectrum.sigma_1.unit
+        spectrum.F_1.free = True
+        spectrum.mu_1.free = True
+        spectrum.sigma_1.free = False
+        spectrum.F_2.free = False
+        spectrum.mu_2.free = False
+        spectrum.sigma_2.free = False
+        spectrum.F_3.free = False
+        spectrum.mu_3.free = False
+        spectrum.sigma_3.free = False
     else:
         gaussian1 = Gaussian()
         gaussian2 = Gaussian()
@@ -541,7 +584,7 @@ def run_likelihood(model, plugin):
 
 # %% 
 # --- Plot Flux Results ---
-def plot_flux_results(results, spectrum, spectrum_unit, name):
+def plot_flux_results(results, spectrum, spectrum_unit, name, savefig=None):
     energy = np.linspace(1140 * u.keV, 1180 * u.keV, 81).to_value(u.keV)
     flux_lo, flux_median, flux_hi, flux_inj = np.zeros_like(energy), np.zeros_like(energy), np.zeros_like(energy), np.zeros_like(energy)
 
@@ -568,7 +611,11 @@ def plot_flux_results(results, spectrum, spectrum_unit, name):
     plt.xlabel("Energy (keV)")
     plt.ylabel(r"$E^2 \frac{dN}{dE}$ (keV cm$^{-2}$ s$^{-1}$)")
     plt.legend()
-    plt.show()
+    if savefig is not None:
+        plt.savefig(savefig)
+        plt.clf()
+    else:
+        plt.show()
 
 # %%
 def scan_log_likelihood(cosi, spectrum_attr1, values1, spectrum_attr2=None, values2=None):
@@ -615,8 +662,9 @@ def plot_logL_1d(values, logLs, xlabel, savefig=None, injected_value=None):
     plt.tight_layout()
     if savefig is not None:
         plt.savefig(savefig)
-    # plt.show()
-    plt.clf()
+        plt.clf()
+    else:
+        plt.show()
 
 def plot_logL_2d(values1, values2, logL_grid, xlabel, ylabel, savefig=None):
     plt.figure(figsize=(8, 6))
@@ -633,8 +681,9 @@ def plot_logL_2d(values1, values2, logL_grid, xlabel, ylabel, savefig=None):
     plt.tight_layout()
     if savefig is not None:
         plt.savefig(savefig)
-    # plt.show()
-    plt.clf()
+        plt.clf()
+    else:
+        plt.show()
 
 # %% 
 # --- Initialize Environment ---
@@ -705,35 +754,37 @@ def main2(srcname, num_samples, bgcounts):
 def main():
 
     sha = get_git_revision_short_hash()
-    srcname = 'CasAfullyresolved'
-    num_samples = 1000
+    srcname = 'CasAG16distribution'
+    num_samples = 10000
 
     bgcounts = 0
-    for bgcounts in [0, 400, 800]:
+    for bgcounts in [0]:
         cosi = main2(srcname, num_samples, bgcounts)
         spectrum = cosi._likelihood_model.source.spectrum.main.shape
-        # spectrum_unit = spectrum.F.unit / spectrum.sigma.unit 
+        spectrum_unit = 1 / u.cm / u.cm / u.s / u.keV       # Warning: Hardcoded
         model = cosi._likelihood_model
 
-        # results = run_likelihood(model, cosi)
-        # print(results.display())
-        # print(results.optimized_model["source"])
-        # plot_flux_results(results, spectrum, spectrum_unit, name=srcname)
-
-        # # Log-likelihood scan
-        counter = 0
+        # Set figure name
+        counter = 1
         while True:
             savefig = f'N{srcname}_S{num_samples}_B{bgcounts}_#{sha}_{counter}.png'
             if not os.path.exists('FF/' + savefig):
                 break
             counter += 1
-        F_values = np.geomspace(1e-5, 1e-2, 15)
-        mu_values = np.linspace(1145, 1155, 5)
+
+        # results = run_likelihood(model, cosi)
+        # print(results.display())
+        # print(results.optimized_model["source"])
+        # plot_flux_results(results, spectrum, spectrum_unit, name=srcname, savefig='fit/' + savefig)
+
+        # Log-likelihood scan
+        F_values = np.geomspace(1e-5, 1e-3, 9)
+        mu_values = np.linspace(1145, 1155, 8)
         sigma_values = np.linspace(1.1, 2.15, 7)
-        logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
-        plot_logL_1d(F_values, logL_grid, xlabel='F_1', savefig='logL/' + savefig)
-        # logL_grid = scan_log_likelihood(cosi, 'mu', mu_values, 'sigma', sigma_values)
-        # plot_logL_2d(mu_values, sigma_values, logL_grid, xlabel='mu', ylabel='sigma', savefig='logL/' + savefig)
+        # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
+        # plot_logL_1d(F_values, logL_grid, xlabel='F_1', savefig='logL/' + savefig)
+        # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values, 'mu_1', mu_values)
+        # plot_logL_2d(F_values, mu_values, logL_grid, xlabel='F_1', ylabel='mu_1', savefig='logL/' + savefig)
 
         cosi.display_model(savefig='FF/' + savefig)
 
