@@ -25,7 +25,6 @@ from mhealpy import HealpixMap, HealpixBase
 from scoords import Attitude, SpacecraftFrame
 
 from cosipy import UnBinnedData, BinnedData, test_data
-from cosipy.response import FullDetectorResponse, DetectorResponse, PointSourceResponse
 from cosipy.spacecraftfile import SpacecraftFile
 from FullDetectorResponseNew import FullDetectorResponse
 from DetectorResponseNew import DetectorResponse
