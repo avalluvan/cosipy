@@ -10,32 +10,27 @@ import astropy.constants as const
 from astropy.coordinates import SkyCoord
 from scipy import integrate
 from scipy.special import erfc, erf
-from scipy.optimize import curve_fit
 from scipy.stats import gaussian_kde
 
+import os
+import subprocess
 from tqdm import tqdm
 import multiprocess as mp
-from functools import partial
 from pathlib import Path
 import itertools
-import copy
-import warnings
-import collections
 
 from histpy import Histogram, Axes, Axis, HealpixAxis
 import healpy as hp
-import mhealpy as mhp
 from mhealpy import HealpixMap, HealpixBase
 from scoords import Attitude, SpacecraftFrame
 
-from cosipy.response import FullDetectorResponse, DetectorResponse, PointSourceResponse
 from cosipy import UnBinnedData, BinnedData, test_data
+from cosipy.response import FullDetectorResponse, DetectorResponse, PointSourceResponse
+from cosipy.spacecraftfile import SpacecraftFile
 from FullDetectorResponseNew import FullDetectorResponse
 from DetectorResponseNew import DetectorResponse
-from cosipy.spacecraftfile import SpacecraftFile
 
 from astromodels import PointSource, Parameter
-from lmfit.models import gaussian
 from threeML import Model, Powerlaw, Gaussian, Constant, Band
 from threeML import PluginPrototype, Model, JointLikelihood, DataList
 from threeML.utils.statistics.likelihood_functions import poisson_log_likelihood_ideal_bkg
@@ -56,6 +51,10 @@ def configure_plot_style():
         'font.size': 22, 'lines.linewidth': 3,
         'figure.figsize': (9.6, 5.4), 'figure.dpi': 100
     })
+
+# %%
+def get_git_revision_short_hash() -> str:
+    return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
 
 # %% 
 # --- Load Detector Response ---
@@ -91,7 +90,7 @@ def estimate_kde(bg_dict):
 def compute_background_kde(bg_dict, rot_custom):
     bg_ang_rot = rot_custom(bg_dict['Chi galactic'], bg_dict['Psi galactic'], lonlat=True)
     background_data = np.array([bg_dict['Energies'], bg_dict['Phi'], bg_ang_rot[1], bg_ang_rot[0]])
-    background_kde = gaussian_kde(background_data[[0,3],:])
+    background_kde = gaussian_kde(background_data[[0,1,3],:])
     return background_kde, background_data
 
 # %% 
@@ -326,7 +325,7 @@ class COSILikeNew(PluginPrototype):
         with mp.Pool(processes = 10) as pool:
             signal_densities = Quantity(pool.starmap(compute_func, args))                             # Each entry is the predicted density for one observed event
 
-        background_densities = self._background_kde([energy_samples.value, chi_samples.value])        # Currently using the two KDE variables with maximal discriminating power
+        background_densities = self._background_kde([energy_samples.value, phi_samples.value, chi_samples.value])        # Currently using the two KDE variables with maximal discriminating power
         eventwise_expectation_densities = Quantity(signal_densities) + background_densities * background_norm
 
         return eventwise_expectation_densities
@@ -706,11 +705,12 @@ def main2(srcname, num_samples, bgcounts):
 # --- Main Execution ---
 def main():
 
+    sha = get_git_revision_short_hash()
     srcname = 'CasAfullyresolved'
     num_samples = 1000
 
     bgcounts = 0
-    for bgcounts in [0, 100, 200, 400, 600, 800]:
+    for bgcounts in [0, 400, 800]:
         cosi = main2(srcname, num_samples, bgcounts)
         spectrum = cosi._likelihood_model.source.spectrum.main.shape
         # spectrum_unit = spectrum.F.unit / spectrum.sigma.unit 
@@ -722,8 +722,13 @@ def main():
         # plot_flux_results(results, spectrum, spectrum_unit, name=srcname)
 
         # # Log-likelihood scan
-        savefig = f'N{srcname}_S{num_samples}_B{bgcounts}.png'
-        F_values = np.geomspace(3e-4 / 100, 3e-4 * 100, 21)
+        counter = 0
+        while True:
+            savefig = f'N{srcname}_S{num_samples}_B{bgcounts}_#{sha}_{counter}.png'
+            if not os.path.exists('FF/' + savefig):
+                break
+            counter += 1
+        F_values = np.geomspace(1e-5, 1e-2, 15)
         mu_values = np.linspace(1145, 1155, 5)
         sigma_values = np.linspace(1.1, 2.15, 7)
         logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
@@ -736,5 +741,6 @@ def main():
 
 # %% 
 # --- Script Entry Point ---
+# Simply run python LMDR4.py within appropriate environment
 if __name__ == "__main__":
     main()
