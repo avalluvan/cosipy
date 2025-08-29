@@ -66,13 +66,6 @@ def load_detector_response(response_path, pix=0):
     return dr
 
 # %% 
-# --- Load RSP Array ---
-def load_rsp_array(response_path):
-    with FullDetectorResponse.open(response_path) as f:
-        rsp = np.array(f._file['DRM']['CONTENTS'])
-    return rsp
-
-# %% 
 # --- Load Source Data ---
 def load_data(DATA_DIR, name='CasAfullyresolved'):
     point_source = UnBinnedData(DATA_DIR / '44Ti/inputs.yaml')
@@ -381,7 +374,7 @@ class COSILikeNew(PluginPrototype):
     def get_number_of_model_parameters(self):
         return self._likelihood_model.get_number_of_free_parameters()
     
-    def display_model(self, Ei = None, norm = 1):
+    def display_model(self, Ei = None, norm = 1, savefig=None):
         # Does not fold with phi and psichi response
         # Incident energy grid (Ei): where photons originate
         if Ei is None:
@@ -425,7 +418,10 @@ class COSILikeNew(PluginPrototype):
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.show()
+        if savefig is not None:
+            plt.savefig(savefig)
+        # plt.show()
+        plt.clf()
         # return plt
 
 # %% 
@@ -441,11 +437,11 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
         spec.F.max_value = F.value * 1e3
         spec.F.unit = F.unit
         spec.mu.value = mu.value
-        spec.mu.min_value = mu.value - 10
-        spec.mu.max_value = mu.value + 10
+        spec.mu.min_value = mu.value - 15
+        spec.mu.max_value = mu.value + 15
         spec.mu.unit = mu.unit
         spec.sigma.value = sigma.value
-        spec.sigma.min_value = sigma.value - 5
+        spec.sigma.min_value = 0.1
         spec.sigma.max_value = sigma.value + 5
         spec.sigma.unit = sigma.unit
     else:
@@ -459,15 +455,15 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
 
         for i in [1, 2]:
             getattr(spec, f'F_{i}').value = locals()[f'F{i}'].value
-            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e2
-            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e2
+            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e3
+            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e3
             getattr(spec, f'F_{i}').unit = locals()[f'F{i}'].unit
             getattr(spec, f'mu_{i}').value = locals()[f'mu{i}'].value
             getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 10
             getattr(spec, f'mu_{i}').max_value = locals()[f'mu{i}'].value + 10
             getattr(spec, f'mu_{i}').unit = locals()[f'mu{i}'].unit
             getattr(spec, f'sigma_{i}').value = locals()[f'sigma{i}'].value
-            getattr(spec, f'sigma_{i}').min_value = locals()[f'sigma{i}'].value - 5
+            getattr(spec, f'sigma_{i}').min_value = 0.1
             getattr(spec, f'sigma_{i}').max_value = locals()[f'sigma{i}'].value + 5
             getattr(spec, f'sigma_{i}').unit = locals()[f'sigma{i}'].unit
     return spec
@@ -513,8 +509,8 @@ def build_spectrum(name):
 
 # %% 
 # --- Create COSILikeNew Plugin ---
-def create_plugin(name, dr2, exposure_time, energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis, spectrum_unit, background_kde, bgcounts):
-    return COSILikeNew(
+def build_plugin(name, dr2, exposure_time, l, b, energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis, spectrum, spectrum_unit, background_kde, bgcounts):
+    cosi = COSILikeNew(
         name=name,
         dr=dr2,
         exposure_time=exposure_time,
@@ -531,6 +527,11 @@ def create_plugin(name, dr2, exposure_time, energy_samples, phi_samples, Psi_sc_
         background_kde=background_kde,
         bgcounts=bgcounts
     )
+
+    source = PointSource('source', l=l, b=b, spectral_shape=spectrum)
+    model = Model(source)
+    cosi.set_model(model)
+    return cosi
 
 # %% 
 # --- Run Likelihood Fit ---
@@ -599,62 +600,105 @@ def scan_log_likelihood(cosi, spectrum_attr1, values1, spectrum_attr2=None, valu
         setattr(cosi._likelihood_model.source.spectrum.main.shape, spectrum_attr2, values2[idx[1]])
         return logL_grid
 
-def plot_logL_1d(values, logLs, xlabel, injected_value=None):
+def plot_logL_1d(values, logLs, xlabel, savefig=None, injected_value=None):
     plt.figure(figsize=(8, 5))
     plt.plot(values, logLs, lw=2)
     if injected_value is not None:
         plt.axvline(injected_value, ls=':', c='g', label='Injected')
     plt.axvline(values[np.nanargmax(logLs)], ls='--', label='Fit')
+    
+    if (np.log10(values[-1]) - np.log10(values[0])) > 1:      # If range greater than 10x
+        plt.xscale('log')
     plt.xlabel(xlabel)
     plt.ylabel("Log-Likelihood")
     plt.title(f"Log-Likelihood vs. {xlabel}")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    if savefig is not None:
+        plt.savefig(savefig)
+    # plt.show()
+    plt.clf()
 
-def plot_logL_2d(values1, values2, logL_grid, xlabel, ylabel):
+def plot_logL_2d(values1, values2, logL_grid, xlabel, ylabel, savefig=None):
     plt.figure(figsize=(8, 6))
     plt.contourf(values1, values2, logL_grid.T, levels=50, cmap='viridis')
     plt.colorbar(label="Log-Likelihood")
-    plt.xscale('log')
+    
+    if (np.log10(values1[-1]) - np.log10(values1[0])) > 1:      # If range greater than 10x
+        plt.xscale('log')
+    if (np.log10(values2[-1]) - np.log10(values2[0])) > 1:
+        plt.yscale('log')
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(f"Log-Likelihood vs. {xlabel} and {ylabel}")
     plt.tight_layout()
-    plt.show()
+    if savefig is not None:
+        plt.savefig(savefig)
+    # plt.show()
+    plt.clf()
+
+# %% 
+# --- Initialize Environment ---
+def initialize_env(response_path, pix=0):
+    configure_plot_style()
+    dr = load_detector_response(response_path=response_path, pix=pix)
+    dr2 = project_detector_response(dr=dr)
+    return dr2
+
+# %% 
+# --- Load Signal Data and Coordinates ---
+def load_signal_data(DATA_DIR, srcname):
+    data, l, b = load_data(DATA_DIR=DATA_DIR, name=srcname)
+    rot_custom = hp.Rotator(rot=[l, b - 90], inv=False)
+    return data, l, b, rot_custom
+
+# %% 
+# --- Load Background and Estimate KDE ---
+def load_background_data(DATA_DIR, rot_custom):
+    bg_dict = load_background(DATA_DIR=DATA_DIR)
+    bg_kde = estimate_kde(bg_dict=bg_dict)
+    background_kde, background_data = compute_background_kde(bg_dict=bg_dict, rot_custom=rot_custom)
+    return bg_dict, bg_kde, background_kde, background_data
+
+# %% 
+# --- Sample Signal and Background Events ---
+def create_event_data(data, bg_dict, num_samples, bgcounts, l, b):
+    energy_samples, phi_samples, psi_gal_samples, chi_gal_samples = sample_events(
+        data=data, bg_dict=bg_dict, num_samples=num_samples, bgcounts=bgcounts)
+    # plot_energy_histogram(energy_samples, data)
+    Psi_sc_onaxis, Chi_sc_onaxis, pixels_rot, nside = analyze_healpix_coordinates(
+        chi_gal_samples=chi_gal_samples, psi_gal_samples=psi_gal_samples,
+        l=l, b=b, nside=32)
+    # plot_healpix_map(pixels_rot=pixels_rot, nside=nside)
+    return energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis
 
 # %%
 def main2(srcname, num_samples, bgcounts):
-    configure_plot_style()
-    dr = load_detector_response(response_path, pix=0)
-    rsp = load_rsp_array(response_path)
-    data, l, b = load_data(DATA_DIR, name=srcname)
-    bg_dict = load_background(DATA_DIR)
-    bg_kde = estimate_kde(bg_dict)
-    rot_custom = hp.Rotator(rot=[l, b-90], inv=False)
-    background_kde, background_data = compute_background_kde(bg_dict, rot_custom)
-    energy_samples, phi_samples, psi_gal_samples, chi_gal_samples = sample_events(data, bg_dict, num_samples=1000, bgcounts=0)
-    # plot_energy_histogram(energy_samples, data)
-    Psi_sc_onaxis, Chi_sc_onaxis, pixels_rot, nside = analyze_healpix_coordinates(
-        chi_gal_samples=chi_gal_samples, psi_gal_samples=psi_gal_samples, l=l, b=b, nside=32)
-    # plot_healpix_map(pixels_rot=pixels_rot, nside=nside)
-    dr2 = project_detector_response(dr)
 
-    # Build spectrum and plugin
-    spectrum, spectrum_unit = build_spectrum('CasAsymmetric')
+    # Init
+    dr2 = initialize_env(response_path, pix=0)
+
+    # Signal
+    data, l, b, rot_custom = load_signal_data(DATA_DIR=DATA_DIR, srcname=srcname)
+
+    # Background
+    bg_dict, bg_kde, background_kde, background_data = load_background_data(DATA_DIR=DATA_DIR, rot_custom=rot_custom)
+
+    # All events
+    energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis = create_event_data(
+        data=data, bg_dict=bg_dict, num_samples=num_samples, bgcounts=bgcounts, l=l, b=b)
+
+    # Create spectrum and threeML plugin
+    spectrum, spectrum_unit = build_spectrum(srcname)       # Change to model you want to fit (can be different from data)
     # plot_spectrum_model(spectrum=spectrum, spectrum_unit=spectrum_unit, energy_range=(1140, 1180), num_points=121)
     exposure_time = 92.34 * u.d * (num_samples / len(data['Energies'])) * 0.35
     print(len(np.where((energy_samples.value > 1130) & (energy_samples.value < 1200))[0]),
           len(np.where((data['Energies'] > 1130) & (data['Energies'] < 1200))[0]),
           len(data['Energies']))
 
-    cosi = create_plugin('cosi', dr2, exposure_time, energy_samples, phi_samples, 
-                         Psi_sc_onaxis, Chi_sc_onaxis, spectrum_unit, background_kde, bgcounts)
-
-    source = PointSource('source', l=l, b=b, spectral_shape=spectrum)
-    model = Model(source)
-    cosi.set_model(model)
+    cosi = build_plugin('cosi', dr2, exposure_time, l, b, energy_samples, phi_samples, 
+                         Psi_sc_onaxis, Chi_sc_onaxis, spectrum, spectrum_unit, background_kde, bgcounts)
 
     return cosi
 
@@ -662,30 +706,32 @@ def main2(srcname, num_samples, bgcounts):
 # --- Main Execution ---
 def main():
 
-    srcname = 'CasApartiallyresolved'
+    srcname = 'CasAfullyresolved'
     num_samples = 1000
+
     bgcounts = 0
+    for bgcounts in [0, 100, 200, 400, 600, 800]:
+        cosi = main2(srcname, num_samples, bgcounts)
+        spectrum = cosi._likelihood_model.source.spectrum.main.shape
+        # spectrum_unit = spectrum.F.unit / spectrum.sigma.unit 
+        model = cosi._likelihood_model
 
-    cosi = main2(srcname, num_samples, bgcounts)
-    spectrum = cosi._likelihood_model.source.spectrum.main.shape
-    spectrum_unit = spectrum.F.unit / spectrum.sigma.unit 
-    model = cosi._likelihood_model
+        # results = run_likelihood(model, cosi)
+        # print(results.display())
+        # print(results.optimized_model["source"])
+        # plot_flux_results(results, spectrum, spectrum_unit, name=srcname)
 
-    # results = run_likelihood(model, cosi)
-    # print(results.display())
-    # print(results.optimized_model["source"])
-    # plot_flux_results(results, spectrum, spectrum_unit, name=srcname)
+        # # Log-likelihood scan
+        savefig = f'N{srcname}_S{num_samples}_B{bgcounts}.png'
+        F_values = np.geomspace(3e-4 / 100, 3e-4 * 100, 21)
+        mu_values = np.linspace(1145, 1155, 5)
+        sigma_values = np.linspace(1.1, 2.15, 7)
+        logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
+        plot_logL_1d(F_values, logL_grid, xlabel='F_1', savefig='logL/' + savefig)
+        # logL_grid = scan_log_likelihood(cosi, 'mu', mu_values, 'sigma', sigma_values)
+        # plot_logL_2d(mu_values, sigma_values, logL_grid, xlabel='mu', ylabel='sigma', savefig='logL/' + savefig)
 
-    # # Log-likelihood scan
-    F_values = np.geomspace(3e-4 / 10, 3e-4 * 10, 7)
-    mu_values = np.linspace(1150, 1164, 5)
-    sigma_values = np.linspace(1.1, 2.15, 7)
-    # logL_grid = scan_log_likelihood(cosi, 'mu', mu_values)
-    # plot_logL_1d(mu_values, logL_grid, xlabel='mu')
-    logL_grid = scan_log_likelihood(cosi, 'mu', mu_values, 'sigma', sigma_values)
-    plot_logL_2d(mu_values, sigma_values, logL_grid, xlabel='mu', ylabel='sigma')
-
-    cosi.display_model()
+        cosi.display_model(savefig='FF/' + savefig)
 
 
 # %% 
