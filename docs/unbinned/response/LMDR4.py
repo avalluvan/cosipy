@@ -229,6 +229,18 @@ class COSILikeNew(PluginPrototype):
         self._background_kde_axes = background_kde_axes
         self._bgcounts = bgcounts
 
+        # Mask samples outside Eiedges
+        self._mask_samples()
+
+    def _mask_samples(self):
+        # Mask samples outside the region that will predominantly 
+        # contribute to line emission. Eiedges is chosen by user. 
+        mask = (self._energy_samples >= self._Eiedges[0]) & (self._energy_samples <= self._Eiedges[-1])
+        self._energy_samples = self._energy_samples[mask]
+        self._phi_samples = self._phi_samples[mask]
+        self._psi_samples = self._psi_samples[mask]
+        self._chi_samples = self._chi_samples[mask]
+
     def gaus_kernel(self, Ei, Em, sigma_e):
         # Gaussian energy dispersion kernel
         # Probability of detecting Em given true energy Ei
@@ -290,16 +302,11 @@ class COSILikeNew(PluginPrototype):
         delta_Em = self._delta_Em
         spectrum = self._likelihood_model.source.spectrum.main.shape
         kernel_name = self._energy_redistribution_kernel
-        background_norm = self._bgcounts #self._nuisance_parameters['testing']
-        background_kde_axes = self._background_kde_axes
 
-        # Mask samples outside the region that will predominantly 
-        # contribute to line emission. Eiedges is chosen by user. 
-        mask = (self._energy_samples >= Eiedges[0]) & (self._energy_samples <= Eiedges[-1])
-        energy_samples = self._energy_samples[mask]
-        phi_samples = self._phi_samples[mask]
-        psi_samples = self._psi_samples[mask]
-        chi_samples = self._chi_samples[mask]
+        energy_samples = self._energy_samples
+        phi_samples = self._phi_samples
+        psi_samples = self._psi_samples
+        chi_samples = self._chi_samples
 
         # Kernal dictionary
         available_kernels = {
@@ -327,12 +334,19 @@ class COSILikeNew(PluginPrototype):
         with mp.Pool(processes = 10) as pool:
             signal_densities = Quantity(pool.starmap(compute_func, args))                             # Each entry is the predicted density for one observed event
 
-        all_data = [energy_samples.value, phi_samples.value, psi_samples.value, chi_samples.value]
-        background_densities = self._background_kde([all_data[i] for i in background_kde_axes])        # Currently using the two KDE variables with maximal discriminating power
-        eventwise_expectation_densities = Quantity(signal_densities) + background_densities * background_norm
+        background_densities = self._compute_predicted_b()        # Currently using the two KDE variables with maximal discriminating power
+        eventwise_expectation_densities = Quantity(signal_densities) + background_densities
 
         return eventwise_expectation_densities
+    
+    def _compute_predicted_b(self):
+        background_norm = self._bgcounts #self._nuisance_parameters['testing']
+        background_kde = self._background_kde
+        background_kde_axes = self._background_kde_axes
 
+        all_data = [self._energy_samples.value, self._phi_samples.value, self._psi_samples.value, self._chi_samples.value]
+        background_densities = background_kde([all_data[i] for i in background_kde_axes])
+        return background_densities * background_norm
 
     def _compute_predicted_c(self):
         # Compute total expected number of counts over full observation and ROI
@@ -354,9 +368,12 @@ class COSILikeNew(PluginPrototype):
                                    self._spectrum_unit * u.keV
 
         signal_counts = self._effective_area * integrated_flux_over_roi * self._exposure_time
-        background_counts = self._bgcounts #self._nuisance_parameters['testing']
+        background_counts = self._compute_predicted_d()
         total_expected_counts = signal_counts + background_counts
         return total_expected_counts
+    
+    def _compute_predicted_d(self):
+        return self._bgcounts #self._nuisance_parameters['testing']
 
     def get_log_like(self):
         # Final log-likelihood: Poisson likelihood from eventwise 
@@ -364,6 +381,12 @@ class COSILikeNew(PluginPrototype):
         eventwise_expectation_density = self._compute_predicted_a()
         total_expected_counts = self._compute_predicted_c()
         log_like = -total_expected_counts + np.sum(np.log(eventwise_expectation_density + self._tiny))
+        return log_like
+    
+    def get_log_like_null_hypothesis(self):
+        background_only_expectation_density = self._compute_predicted_b()
+        background_only_expected_counts = self._compute_predicted_d()
+        log_like = -background_only_expected_counts + np.sum(np.log(background_only_expectation_density + self._tiny))
         return log_like
 
     def inner_fit(self):
@@ -782,6 +805,7 @@ def main():
         print(results.display())
         print(results.optimized_model["source"])
         plot_flux_results(results, spectrum, spectrum_unit, name=srcname, savefig='fit/' + savefig)
+        results.write_to('results/' + savefig[:-4] + '.fits')
 
         # Log-likelihood scan
         F_values = np.geomspace(1e-5, 1e-3, 9)
