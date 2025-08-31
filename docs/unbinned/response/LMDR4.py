@@ -321,7 +321,7 @@ class COSILikeNew(PluginPrototype):
         # for Em, Phi, Psi, Chi in args:
         #     signal_density = compute_func(Em, Phi, Psi, Chi)
         #     signal_densities.append(signal_density)
-        with mp.Pool(processes = 7) as pool:
+        with mp.Pool(processes = 10) as pool:
             signal_densities = Quantity(pool.starmap(compute_func, args))                             # Each entry is the predicted density for one observed event
 
         background_densities = self._background_kde([energy_samples.value, phi_samples.value, chi_samples.value])        # Currently using the two KDE variables with maximal discriminating power
@@ -432,8 +432,8 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
         mu = 1157 * u.keV
         sigma = 3.85 / 2.355 * u.keV
         spec.F.value = F.value
-        spec.F.min_value = F.value / 1e3
-        spec.F.max_value = F.value * 1e3
+        spec.F.min_value = F.value / 1e2
+        spec.F.max_value = F.value * 1e2
         spec.F.unit = F.unit
         spec.mu.value = mu.value
         spec.mu.min_value = mu.value - 15
@@ -457,8 +457,8 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
         sigma3 = 0.4 * u.keV
         for i in [1, 2, 3]:
             getattr(spec, f'F_{i}').value = locals()[f'F{i}'].value
-            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e3
-            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e3
+            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e2
+            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e2
             getattr(spec, f'F_{i}').unit = locals()[f'F{i}'].unit
             getattr(spec, f'mu_{i}').value = locals()[f'mu{i}'].value
             getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 10
@@ -480,12 +480,12 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
 
         for i in [1, 2]:
             getattr(spec, f'F_{i}').value = locals()[f'F{i}'].value
-            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e3
-            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e3
+            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e2
+            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e2
             getattr(spec, f'F_{i}').unit = locals()[f'F{i}'].unit
             getattr(spec, f'mu_{i}').value = locals()[f'mu{i}'].value
-            getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 10
-            getattr(spec, f'mu_{i}').max_value = locals()[f'mu{i}'].value + 10
+            getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 5
+            getattr(spec, f'mu_{i}').max_value = locals()[f'mu{i}'].value + 5
             getattr(spec, f'mu_{i}').unit = locals()[f'mu{i}'].unit
             getattr(spec, f'sigma_{i}').value = locals()[f'sigma{i}'].value
             getattr(spec, f'sigma_{i}').min_value = 0.1
@@ -543,8 +543,8 @@ def build_spectrum(name):
         spectrum.F_1.free = True
         spectrum.mu_1.free = True
         spectrum.sigma_1.free = False
-        spectrum.F_2.free = False
-        spectrum.mu_2.free = False
+        spectrum.F_2.free = True
+        spectrum.mu_2.free = True
         spectrum.sigma_2.free = False
     return spectrum, spectrum_unit
 
@@ -739,7 +739,7 @@ def main2(srcname, num_samples, bgcounts):
     # Create spectrum and threeML plugin
     spectrum, spectrum_unit = build_spectrum(srcname)       # Change to model you want to fit (can be different from data)
     # plot_spectrum_model(spectrum=spectrum, spectrum_unit=spectrum_unit, energy_range=(1140, 1180), num_points=121)
-    exposure_time = 92.34 * u.d * (num_samples / len(data['Energies'])) * 0.35
+    exposure_time = 92.34 * u.d * (num_samples / len(data['Energies'])) * 0.35          # Warning: Hardcoded "0.35"
     print(len(np.where((energy_samples.value > 1130) & (energy_samples.value < 1200))[0]),
           len(np.where((data['Energies'] > 1130) & (data['Energies'] < 1200))[0]),
           len(data['Energies']))
@@ -754,11 +754,11 @@ def main2(srcname, num_samples, bgcounts):
 def main():
 
     sha = get_git_revision_short_hash()
-    srcname = 'CasAG16distribution'
-    num_samples = 10000
+    srcname = 'CasAfullyresolved'     # CasAG16distribution
+    num_samples = 1000
 
     bgcounts = 0
-    for bgcounts in [0]:
+    for bgcounts in [200, 400]:
         cosi = main2(srcname, num_samples, bgcounts)
         spectrum = cosi._likelihood_model.source.spectrum.main.shape
         spectrum_unit = 1 / u.cm / u.cm / u.s / u.keV       # Warning: Hardcoded
@@ -772,25 +772,25 @@ def main():
                 break
             counter += 1
 
-        # results = run_likelihood(model, cosi)
-        # print(results.display())
-        # print(results.optimized_model["source"])
-        # plot_flux_results(results, spectrum, spectrum_unit, name=srcname, savefig='fit/' + savefig)
+        results = run_likelihood(model, cosi)
+        print(results.display())
+        print(results.optimized_model["source"])
+        plot_flux_results(results, spectrum, spectrum_unit, name=srcname, savefig='fit/' + savefig)
 
         # Log-likelihood scan
         F_values = np.geomspace(1e-5, 1e-3, 9)
         mu_values = np.linspace(1145, 1155, 8)
-        sigma_values = np.linspace(1.1, 2.15, 7)
+        sigma_values = np.linspace(0.2, 1.8, 9)
         # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
         # plot_logL_1d(F_values, logL_grid, xlabel='F_1', savefig='logL/' + savefig)
-        # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values, 'mu_1', mu_values)
-        # plot_logL_2d(F_values, mu_values, logL_grid, xlabel='F_1', ylabel='mu_1', savefig='logL/' + savefig)
+        # logL_grid = scan_log_likelihood(cosi, 'F_3', F_values, 'sigma_3', sigma_values)
+        # plot_logL_2d(F_values, sigma_values, logL_grid, xlabel='F_3', ylabel='sigma_3', savefig='logL/' + savefig)
 
         cosi.display_model(savefig='FF/' + savefig)
 
 
 # %% 
 # --- Script Entry Point ---
-# Simply run python LMDR4.py within appropriate environment
+# $ python LMDR4.py     # within appropriate environment
 if __name__ == "__main__":
     main()
