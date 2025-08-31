@@ -86,10 +86,10 @@ def estimate_kde(bg_dict):
 
 # %% 
 # --- Compute Rotated Background KDE ---
-def compute_background_kde(bg_dict, rot_custom):
+def compute_background_kde(bg_dict, rot_custom, kde_axes):
     bg_ang_rot = rot_custom(bg_dict['Chi galactic'], bg_dict['Psi galactic'], lonlat=True)
     background_data = np.array([bg_dict['Energies'], bg_dict['Phi'], bg_ang_rot[1], bg_ang_rot[0]])
-    background_kde = gaussian_kde(background_data[[0,1,3],:])
+    background_kde = gaussian_kde(background_data[kde_axes,:])
     return background_kde, background_data
 
 # %% 
@@ -190,6 +190,7 @@ class COSILikeNew(PluginPrototype):
                  tau_e, 
                  energy_redistribution_kernel,
                  background_kde,
+                 background_kde_axes, 
                  bgcounts):
         
         super().__init__(name, nuisance_param)  # Initialize plugin base class with name and nuisance parameters
@@ -225,6 +226,7 @@ class COSILikeNew(PluginPrototype):
         self._effective_area = np.sum(self._dr.contents)           # Effective area of the detector hardcoded for line fitting
         self._energy_redistribution_kernel = energy_redistribution_kernel                # If None, then we are effectively modeling a detector with infinite energy resolution
         self._background_kde = background_kde
+        self._background_kde_axes = background_kde_axes
         self._bgcounts = bgcounts
 
     def gaus_kernel(self, Ei, Em, sigma_e):
@@ -289,6 +291,7 @@ class COSILikeNew(PluginPrototype):
         spectrum = self._likelihood_model.source.spectrum.main.shape
         kernel_name = self._energy_redistribution_kernel
         background_norm = self._bgcounts #self._nuisance_parameters['testing']
+        background_kde_axes = self._background_kde_axes
 
         # Mask samples outside the region that will predominantly 
         # contribute to line emission. Eiedges is chosen by user. 
@@ -324,7 +327,8 @@ class COSILikeNew(PluginPrototype):
         with mp.Pool(processes = 10) as pool:
             signal_densities = Quantity(pool.starmap(compute_func, args))                             # Each entry is the predicted density for one observed event
 
-        background_densities = self._background_kde([energy_samples.value, phi_samples.value, chi_samples.value])        # Currently using the two KDE variables with maximal discriminating power
+        all_data = [energy_samples.value, phi_samples.value, psi_samples.value, chi_samples.value]
+        background_densities = self._background_kde([all_data[i] for i in background_kde_axes])        # Currently using the two KDE variables with maximal discriminating power
         eventwise_expectation_densities = Quantity(signal_densities) + background_densities * background_norm
 
         return eventwise_expectation_densities
@@ -550,7 +554,7 @@ def build_spectrum(name):
 
 # %% 
 # --- Create COSILikeNew Plugin ---
-def build_plugin(name, dr2, exposure_time, l, b, energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis, spectrum, spectrum_unit, background_kde, bgcounts):
+def build_plugin(name, dr2, exposure_time, l, b, energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis, spectrum, spectrum_unit, background_kde, background_kde_axes, bgcounts):
     cosi = COSILikeNew(
         name=name,
         dr=dr2,
@@ -566,6 +570,7 @@ def build_plugin(name, dr2, exposure_time, l, b, energy_samples, phi_samples, Ps
         nuisance_param={},
         energy_redistribution_kernel='doubleexpgaus',
         background_kde=background_kde,
+        background_kde_axes=background_kde_axes,
         bgcounts=bgcounts
     )
 
@@ -702,11 +707,10 @@ def load_signal_data(DATA_DIR, srcname):
 
 # %% 
 # --- Load Background and Estimate KDE ---
-def load_background_data(DATA_DIR, rot_custom):
+def load_background_data(DATA_DIR, rot_custom, kde_axes):
     bg_dict = load_background(DATA_DIR=DATA_DIR)
-    bg_kde = estimate_kde(bg_dict=bg_dict)
-    background_kde, background_data = compute_background_kde(bg_dict=bg_dict, rot_custom=rot_custom)
-    return bg_dict, bg_kde, background_kde, background_data
+    background_kde, background_data = compute_background_kde(bg_dict=bg_dict, rot_custom=rot_custom, kde_axes=kde_axes)
+    return bg_dict, background_kde, background_data
 
 # %% 
 # --- Sample Signal and Background Events ---
@@ -721,7 +725,7 @@ def create_event_data(data, bg_dict, num_samples, bgcounts, l, b):
     return energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis
 
 # %%
-def main2(srcname, num_samples, bgcounts):
+def main2(srcname, num_samples, bgcounts, kde_axes):
 
     # Init
     dr2 = initialize_env(response_path, pix=0)
@@ -730,7 +734,7 @@ def main2(srcname, num_samples, bgcounts):
     data, l, b, rot_custom = load_signal_data(DATA_DIR=DATA_DIR, srcname=srcname)
 
     # Background
-    bg_dict, bg_kde, background_kde, background_data = load_background_data(DATA_DIR=DATA_DIR, rot_custom=rot_custom)
+    bg_dict, background_kde, background_data = load_background_data(DATA_DIR=DATA_DIR, rot_custom=rot_custom, kde_axes=kde_axes)
 
     # All events
     energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis = create_event_data(
@@ -745,7 +749,8 @@ def main2(srcname, num_samples, bgcounts):
           len(data['Energies']))
 
     cosi = build_plugin('cosi', dr2, exposure_time, l, b, energy_samples, phi_samples, 
-                         Psi_sc_onaxis, Chi_sc_onaxis, spectrum, spectrum_unit, background_kde, bgcounts)
+                         Psi_sc_onaxis, Chi_sc_onaxis, spectrum, spectrum_unit, 
+                         background_kde, kde_axes, bgcounts)
 
     return cosi
 
@@ -755,11 +760,12 @@ def main():
 
     sha = get_git_revision_short_hash()
     srcname = 'CasAfullyresolved'     # CasAG16distribution
-    num_samples = 1000
+    num_samples = 500
+    kde_axes = (0,1,2,3)
 
     bgcounts = 0
-    for bgcounts in [200, 400]:
-        cosi = main2(srcname, num_samples, bgcounts)
+    for bgcounts in [0]:
+        cosi = main2(srcname, num_samples, bgcounts, kde_axes)
         spectrum = cosi._likelihood_model.source.spectrum.main.shape
         spectrum_unit = 1 / u.cm / u.cm / u.s / u.keV       # Warning: Hardcoded
         model = cosi._likelihood_model
@@ -767,7 +773,7 @@ def main():
         # Set figure name
         counter = 1
         while True:
-            savefig = f'N{srcname}_S{num_samples}_B{bgcounts}_#{sha}_{counter}.png'
+            savefig = f'N{srcname}_S{num_samples}_B{bgcounts}_P{len(kde_axes)}_#{sha}_{counter}.png'
             if not os.path.exists('FF/' + savefig):
                 break
             counter += 1
