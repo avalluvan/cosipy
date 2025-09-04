@@ -14,6 +14,7 @@ from scipy.stats import gaussian_kde
 
 import os
 import subprocess
+import time
 from tqdm import tqdm
 import multiprocess as mp
 from pathlib import Path
@@ -73,16 +74,17 @@ def load_data(DATA_DIR, name='CasAfullyresolved'):
 
 # %% 
 # --- Load Background Data ---
-def load_background(DATA_DIR):
+def load_background(DATA_DIR, bgfilename):
     bg = UnBinnedData(DATA_DIR / '44Ti/inputs.yaml')
-    bg_filepath = DATA_DIR / 'data/backgrounds/unbinned/AlbedoPhotons_44Ti.fits'
+    bg_filepath = DATA_DIR / f'data/backgrounds/unbinned/{bgfilename}'
     bg_dict = bg.get_dict_from_fits(bg_filepath)
     return bg_dict
 
 # %% 
 # --- Estimate KDE from Background Energies ---
 def estimate_kde(bg_dict):
-    return gaussian_kde(bg_dict['Energies'])
+    return gaussian_kde(np.random.choice(bg_dict['Energies'], min(len(bg_dict['Energies']), 1000000), replace=False))      # Warning: Hardcoded. Only include random million events to form the KDE for computation speed reasons
+                                                            # This causes some small deviations (see Testing_KDE panel in LMDR4.ipynb) but the speed gain is considerable enough for me to overlook.
 
 # %% 
 # --- Compute Rotated Background KDE ---
@@ -388,6 +390,13 @@ class COSILikeNew(PluginPrototype):
         background_only_expected_counts = self._compute_predicted_d()
         log_like = -background_only_expected_counts + np.sum(np.log(background_only_expectation_density + self._tiny))
         return log_like
+    
+    def get_LRT(self):
+        background_only_log_like = self.get_log_like_null_hypothesis()
+        model_log_like = self.get_log_like()
+
+        return -2 * (background_only_log_like - model_log_like)
+        pass
 
     def inner_fit(self):
         # Wrapper method for fit logic
@@ -430,6 +439,8 @@ class COSILikeNew(PluginPrototype):
         spectrum = self._likelihood_model.source.spectrum.main.shape
         dEi = Ei[1] - Ei[0]  # Energy bin width
         folded_counts = R @ spectrum(Ei - 0.5 * Ei.unit) * dEi  # Expected counts per measured bin
+        background_counts_model = np.histogram(self._background_kde.resample(10000)[0], bins=Em_bins.value, density=True)[0] * self._bgcounts        # resample() return shape (len(kde_axes), 10000). Convert the resampled data points to a histogram and scale PDF by expected bgcounts (i.e., background norm). Warning: bgcounts is being hardcoded here
+        measured_counts = folded_counts * self._effective_area * self._exposure_time + background_counts_model      # TODO: Incorporate this in plot
 
         plt.figure(figsize=(8, 5))
         plt.plot(Em_centers, folded_counts * self._effective_area * self._exposure_time, label="FF", color='darkorange')
@@ -511,8 +522,8 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
             getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e2
             getattr(spec, f'F_{i}').unit = locals()[f'F{i}'].unit
             getattr(spec, f'mu_{i}').value = locals()[f'mu{i}'].value
-            getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 5
-            getattr(spec, f'mu_{i}').max_value = locals()[f'mu{i}'].value + 5
+            getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 10
+            getattr(spec, f'mu_{i}').max_value = locals()[f'mu{i}'].value + 10
             getattr(spec, f'mu_{i}').unit = locals()[f'mu{i}'].unit
             getattr(spec, f'sigma_{i}').value = locals()[f'sigma{i}'].value
             getattr(spec, f'sigma_{i}').min_value = 0.1
@@ -628,7 +639,7 @@ def plot_flux_results(results, spectrum, spectrum_unit, name, savefig=None):
         flux = results_err(e)
         flux_median[i] = flux.median
         flux_lo[i], flux_hi[i] = flux.equal_tail_interval(cl=0.68)
-        spectrum_inj = spectrum_reset(spec=spectrum, name=name)
+        spectrum_inj = spectrum_reset(spec=spectrum, name=name)         # TODO: As things stand, this won't work with custom modelnames/models not present in spectrum_reset
         flux_inj[i] = spectrum_inj.evaluate_at(e)
 
     fig, ax = plt.subplots()
@@ -730,8 +741,8 @@ def load_signal_data(DATA_DIR, srcname):
 
 # %% 
 # --- Load Background and Estimate KDE ---
-def load_background_data(DATA_DIR, rot_custom, kde_axes):
-    bg_dict = load_background(DATA_DIR=DATA_DIR)
+def load_background_data(DATA_DIR, rot_custom, kde_axes, bgfilename):
+    bg_dict = load_background(DATA_DIR=DATA_DIR, bgfilename=bgfilename)
     background_kde, background_data = compute_background_kde(bg_dict=bg_dict, rot_custom=rot_custom, kde_axes=kde_axes)
     return bg_dict, background_kde, background_data
 
@@ -748,7 +759,10 @@ def create_event_data(data, bg_dict, num_samples, bgcounts, l, b):
     return energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis
 
 # %%
-def main2(srcname, num_samples, bgcounts, kde_axes):
+def get_plugin(srcname, num_samples, bgcounts, kde_axes, bgfilename, modelname=None):
+
+    if modelname is None:
+        modelname = srcname
 
     # Init
     dr2 = initialize_env(response_path, pix=0)
@@ -757,14 +771,17 @@ def main2(srcname, num_samples, bgcounts, kde_axes):
     data, l, b, rot_custom = load_signal_data(DATA_DIR=DATA_DIR, srcname=srcname)
 
     # Background
-    bg_dict, background_kde, background_data = load_background_data(DATA_DIR=DATA_DIR, rot_custom=rot_custom, kde_axes=kde_axes)
+    bg_dict, background_kde, background_data = load_background_data(DATA_DIR=DATA_DIR, rot_custom=rot_custom, kde_axes=kde_axes, bgfilename=bgfilename)
 
     # All events
     energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis = create_event_data(
         data=data, bg_dict=bg_dict, num_samples=num_samples, bgcounts=bgcounts, l=l, b=b)
 
     # Create spectrum and threeML plugin
-    spectrum, spectrum_unit = build_spectrum(srcname)       # Change to model you want to fit (can be different from data)
+    # if isinstance(modelname, threeML):        TODO: finish this if-clause
+    #   spectrum
+    #   spectrum_unit
+    spectrum, spectrum_unit = build_spectrum(modelname)       # Change to model you want to fit (can be different from data)
     # plot_spectrum_model(spectrum=spectrum, spectrum_unit=spectrum_unit, energy_range=(1140, 1180), num_points=121)
     exposure_time = 92.34 * u.d * (num_samples / len(data['Energies'])) * 0.35          # Warning: Hardcoded "0.35"
     print(len(np.where((energy_samples.value > 1130) & (energy_samples.value < 1200))[0]),
@@ -783,12 +800,15 @@ def main():
 
     sha = get_git_revision_short_hash()
     srcname = 'CasAfullyresolved'     # CasAG16distribution
-    num_samples = 500
-    kde_axes = (0,1,2,3)
+    num_samples = 1000              # From full 100 keV -- 5 MeV range
+    kde_axes = (0,1,3)
+    bgfilename = 'SAA_44Ti.fits'        # AlbedoPhotons_44Ti.fits
+    modelname = srcname                 # TODO: Is this the best way to go about it?
 
-    bgcounts = 0
-    for bgcounts in [0]:
-        cosi = main2(srcname, num_samples, bgcounts, kde_axes)
+    bgcounts = 0                    # From 1100 -- 1200 keV range
+    for bgcounts in [0, 400, 800]:
+        start_time = time.time()
+        cosi = get_plugin(srcname, num_samples, bgcounts, kde_axes, bgfilename, modelname)
         spectrum = cosi._likelihood_model.source.spectrum.main.shape
         spectrum_unit = 1 / u.cm / u.cm / u.s / u.keV       # Warning: Hardcoded
         model = cosi._likelihood_model
@@ -796,27 +816,38 @@ def main():
         # Set figure name
         counter = 1
         while True:
-            savefig = f'N{srcname}_S{num_samples}_B{bgcounts}_P{len(kde_axes)}_#{sha}_{counter}.png'
+            savefig = f'{srcname}_S{num_samples}_B{bgcounts}{bgfilename[:3]}_P{len(kde_axes)}_#{sha}_{counter}.png'
             if not os.path.exists('FF/' + savefig):
                 break
             counter += 1
 
-        results = run_likelihood(model, cosi)
-        print(results.display())
-        print(results.optimized_model["source"])
-        plot_flux_results(results, spectrum, spectrum_unit, name=srcname, savefig='fit/' + savefig)
-        results.write_to('results/' + savefig[:-4] + '.fits')
+        # results = run_likelihood(model, cosi)
+        # print(results.display())
+        # print(results.optimized_model["source"])
+        # plot_flux_results(results, spectrum, spectrum_unit, name=modelname, savefig='fit/' + savefig)
+        # results.write_to('results/' + savefig[:-4] + '.fits')
 
         # Log-likelihood scan
-        F_values = np.geomspace(1e-5, 1e-3, 9)
-        mu_values = np.linspace(1145, 1155, 8)
+        F_values = np.geomspace(1e-5, 1e-3, 17)
+        mu_values = np.linspace(1145, 1155, 15)
         sigma_values = np.linspace(0.2, 1.8, 9)
         # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
         # plot_logL_1d(F_values, logL_grid, xlabel='F_1', savefig='logL/' + savefig)
-        # logL_grid = scan_log_likelihood(cosi, 'F_3', F_values, 'sigma_3', sigma_values)
-        # plot_logL_2d(F_values, sigma_values, logL_grid, xlabel='F_3', ylabel='sigma_3', savefig='logL/' + savefig)
+        logL_grid = scan_log_likelihood(cosi, 'F_1', F_values, 'mu_1', mu_values)
+        plot_logL_2d(F_values, mu_values, logL_grid, xlabel='F_1', ylabel='mu_1', savefig='logL/' + savefig)
 
-        cosi.display_model(savefig='FF/' + savefig)
+        # cosi.display_model(savefig='FF/' + savefig)
+
+        # setattr(cosi._likelihood_model.source.spectrum.main.shape, 'F_1', 3e-4)       # TODO: Clean this up
+        # cosi.display_model(savefig=None)
+        # logL = cosi.get_log_like_null_hypothesis()        
+        # print(logL)
+        # LRT = cosi.get_LRT()
+        # print(LRT)
+
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f'Execution time: {elapsed_time:.3f} seconds')
 
 
 # %% 
