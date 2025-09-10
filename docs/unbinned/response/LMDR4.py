@@ -96,7 +96,7 @@ def compute_background_kde(bg_dict, rot_custom, kde_axes):
 
 # %% 
 # --- Sample Events from Data and Background ---
-def sample_events(data, bg_dict, num_samples=1000, bgcounts=0):
+def sample_events(data, bg_dict, num_samples, bgcounts):
     indices = np.random.choice(np.arange(len(bg_dict['Energies'])), bgcounts, replace=False)
     bg_energy_samples = bg_dict['Energies'][indices] * u.keV
     bg_phi_samples = bg_dict['Phi'][indices] * u.rad
@@ -396,7 +396,6 @@ class COSILikeNew(PluginPrototype):
         model_log_like = self.get_log_like()
 
         return -2 * (background_only_log_like - model_log_like)
-        pass
 
     def inner_fit(self):
         # Wrapper method for fit logic
@@ -415,7 +414,7 @@ class COSILikeNew(PluginPrototype):
             Ei = np.linspace(self._Eiedges[0], self._Eiedges[-1], 501)  # keV
 
         # Measured energy bins (Em): what the detector sees
-        Em_bins = np.linspace(self._Eiedges[0], self._Eiedges[-1], 101)  # Measured energy bin edges
+        Em_bins = np.arange(self._Eiedges[0].value, self._Eiedges[-1].value + 1) * self._Eiedges.unit  # Measured energy bin edges
         Em_centers = 0.5 * (Em_bins[1:] + Em_bins[:-1])
 
         # Build redistribution matrix R[Em, Ei]
@@ -447,7 +446,6 @@ class COSILikeNew(PluginPrototype):
         plt.xlabel("Measured Energy (keV)")
         plt.ylabel("Expected Counts")
         plt.title("Forward Folded Model Spectrum")
-        # plt.axvline(1149.35)
         counts, _ = np.histogram(self._energy_samples, Em_bins)
         plt.stairs(counts, Em_bins.value, edgecolor='b', lw=2, label='Data')
 
@@ -518,8 +516,8 @@ def spectrum_reset(spec, name='CasAfullyresolved'):
 
         for i in [1, 2]:
             getattr(spec, f'F_{i}').value = locals()[f'F{i}'].value
-            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e2
-            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e2
+            getattr(spec, f'F_{i}').min_value = locals()[f'F{i}'].value / 1e1
+            getattr(spec, f'F_{i}').max_value = locals()[f'F{i}'].value * 1e1
             getattr(spec, f'F_{i}').unit = locals()[f'F{i}'].unit
             getattr(spec, f'mu_{i}').value = locals()[f'mu{i}'].value
             getattr(spec, f'mu_{i}').min_value = locals()[f'mu{i}'].value - 10
@@ -800,16 +798,16 @@ def get_plugin(srcname, num_samples, bgcounts, kde_axes, bgfilename, modelname=N
 def main():
 
     sha = get_git_revision_short_hash()
-    srcname = 'CasAfullyresolved'     # CasAG16distribution
-    num_samples = 42350              # From full 100 keV -- 5 MeV range
+    srcname = 'CasAsymmetric'     # CasAG16distribution
+    num_samples = 0              # From full 100 keV -- 5 MeV range
     kde_axes = (0,1,2,3)
-    bgfilename = 'AlbedoPhotons_44Ti.fits'        # AlbedoPhotons_44Ti.fits
+    bgfilename = 'SAA_44Ti.fits'        # AlbedoPhotons_44Ti.fits
     modelname = srcname                 # TODO: Is this the best way to go about it?
-    bgcounts = 0                    # From 1100 -- 1200 keV range
+    bgcounts = 200                    # From 1100 -- 1200 keV range
     # TODO: Add set of Trues/Falses for frozen/thawed parameters
     # TODO: How to streamline scalars denoted by num_samples and bgcounts
 
-    for i in range(1):
+    for i in range(2):
         start_time = time.time()
         cosi = get_plugin(srcname, num_samples, bgcounts, kde_axes, bgfilename, modelname)
         spectrum = cosi._likelihood_model.source.spectrum.main.shape
@@ -824,8 +822,9 @@ def main():
                 break
             counter += 1
 
-        setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_1', 1149.75)
-        setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_2', 1161.29)
+        # setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_1', 1149.75)
+        # setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_2', 1161.29)
+        setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu', 1157.4)
 
         # results = run_likelihood(model, cosi)
         # print(results.display())
@@ -834,22 +833,23 @@ def main():
         # results.write_to('results/' + savefig[:-4] + '.fits')
 
         # Log-likelihood scan
-        F_values = np.geomspace(1e-5, 1e-3, 17)
+        F_values = np.geomspace(1e-5, 1e-3, 9)
         mu_values = np.linspace(1145, 1155, 15)
-        sigma_values = np.linspace(0.2, 4.2, 21)
-        # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
-        # plot_logL_1d(F_values, logL_grid, xlabel='F_1', savefig='logL/' + savefig)
-        # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values, 'mu_1', mu_values)
-        # plot_logL_2d(F_values, mu_values, logL_grid, xlabel='F_1', ylabel='mu_1', savefig='logL/' + savefig)
+        sigma_values = np.linspace(1.23, 2.83, 9)
 
-        # cosi.display_model(savefig='FF/' + savefig)
+        # logL_grid = scan_log_likelihood(cosi, 'sigma_1', sigma_values)
+        # plot_logL_1d(sigma_values, logL_grid, xlabel='sigma_1', savefig='logL/' + savefig)
+        # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values, 'sigma_1', sigma_values)
+        # plot_logL_2d(F_values, sigma_values, logL_grid, xlabel='F_1', ylabel='sigma_1', savefig='logL/' + savefig)
 
-        # setattr(cosi._likelihood_model.source.spectrum.main.shape, 'F_1', 3e-4)       # TODO: Clean this up
-        cosi.display_model(savefig=None)
-        # logL = cosi.get_log_like_null_hypothesis()        
-        # print(logL)
+        cosi.display_model(savefig='FF/' + savefig)
+
+        # cosi.display_model(savefig=None)
+        # logL = cosi.get_log_like_null_hypothesis()
         # LRT = cosi.get_LRT()
-        # print(LRT)
+        # with open('results/' + savefig[:-4] + '.txt', 'w') as f:
+        #     print(logL, file=f)
+        #     print(LRT, file=f)
 
         end_time = time.time()
         elapsed_time = end_time - start_time
