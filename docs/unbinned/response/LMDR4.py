@@ -337,12 +337,14 @@ class COSILikeNew(PluginPrototype):
             signal_densities = Quantity(pool.starmap(compute_func, args))                             # Each entry is the predicted density for one observed event
 
         background_densities = self._compute_predicted_b()        # Currently using the two KDE variables with maximal discriminating power
+        print(np.min(signal_densities), np.mean(signal_densities), np.max(signal_densities))
+        print(np.min(background_densities), np.mean(background_densities), np.max(background_densities))
         eventwise_expectation_densities = Quantity(signal_densities) + background_densities
 
         return eventwise_expectation_densities
     
     def _compute_predicted_b(self):
-        background_norm = self._bgcounts #self._nuisance_parameters['testing']
+        background_norm = self._bgcounts * 60 #self._nuisance_parameters['testing']
         background_kde = self._background_kde
         background_kde_axes = self._background_kde_axes
 
@@ -577,10 +579,10 @@ def build_spectrum(name):
         spectrum = spectrum_reset(spectrum, name=name)
         spectrum_unit = spectrum.F_1.unit / spectrum.sigma_1.unit
         spectrum.F_1.free = True
-        spectrum.mu_1.free = True
+        spectrum.mu_1.free = False
         spectrum.sigma_1.free = False
-        spectrum.F_2.free = True
-        spectrum.mu_2.free = True
+        spectrum.F_2.free = False
+        spectrum.mu_2.free = False
         spectrum.sigma_2.free = False
     return spectrum, spectrum_unit
 
@@ -596,7 +598,7 @@ def build_plugin(name, dr2, exposure_time, l, b, energy_samples, phi_samples, Ps
         psi_samples=Psi_sc_onaxis,
         chi_samples=Chi_sc_onaxis,
         spectrum_unit=spectrum_unit,
-        Eiedges=np.array([1130, 1200]) * u.keV,
+        Eiedges=np.array([1100, 1200]) * u.keV,
         sigma_e=2.42 * u.keV,
         tau_e=1 * u.keV,
         nuisance_param={},
@@ -774,7 +776,7 @@ def get_plugin(srcname, num_samples, bgcounts, kde_axes, bgfilename, modelname=N
 
     # All events
     energy_samples, phi_samples, Psi_sc_onaxis, Chi_sc_onaxis = create_event_data(
-        data=data, bg_dict=bg_dict, num_samples=num_samples, bgcounts=bgcounts, l=l, b=b)
+        data=data, bg_dict=bg_dict, num_samples=num_samples, bgcounts=bgcounts, l=l, b=b, background_kde=background_kde)
 
     # Create spectrum and threeML plugin
     # if isinstance(modelname, threeML):        TODO: finish this if-clause
@@ -798,16 +800,16 @@ def get_plugin(srcname, num_samples, bgcounts, kde_axes, bgfilename, modelname=N
 def main():
 
     sha = get_git_revision_short_hash()
-    srcname = 'CasAsymmetric'     # CasAG16distribution
-    num_samples = 0              # From full 100 keV -- 5 MeV range
+    srcname = 'CasAfullyresolved'     # CasAG16distribution
+    num_samples = 1000              # From full 100 keV -- 5 MeV range
     kde_axes = (0,1,2,3)
     bgfilename = 'SAA_44Ti.fits'        # AlbedoPhotons_44Ti.fits
     modelname = srcname                 # TODO: Is this the best way to go about it?
-    bgcounts = 200                    # From 1100 -- 1200 keV range
+    bgcounts = 0                    # From 1100 -- 1200 keV range
     # TODO: Add set of Trues/Falses for frozen/thawed parameters
     # TODO: How to streamline scalars denoted by num_samples and bgcounts
 
-    for i in range(2):
+    for bgcounts in [2000]:
         start_time = time.time()
         cosi = get_plugin(srcname, num_samples, bgcounts, kde_axes, bgfilename, modelname)
         spectrum = cosi._likelihood_model.source.spectrum.main.shape
@@ -822,9 +824,9 @@ def main():
                 break
             counter += 1
 
-        # setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_1', 1149.75)
-        # setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_2', 1161.29)
-        setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu', 1157.4)
+        setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_1', 1149.75)
+        setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu_2', 1161.29)
+        # setattr(cosi._likelihood_model.source.spectrum.main.shape, 'mu', 1157.4)
 
         # results = run_likelihood(model, cosi)
         # print(results.display())
@@ -837,14 +839,15 @@ def main():
         mu_values = np.linspace(1145, 1155, 15)
         sigma_values = np.linspace(1.23, 2.83, 9)
 
-        # logL_grid = scan_log_likelihood(cosi, 'sigma_1', sigma_values)
-        # plot_logL_1d(sigma_values, logL_grid, xlabel='sigma_1', savefig='logL/' + savefig)
+        logL_grid = scan_log_likelihood(cosi, 'F_1', F_values)
+        plot_logL_1d(F_values, logL_grid, xlabel='F_1', savefig='logL/' + savefig)
         # logL_grid = scan_log_likelihood(cosi, 'F_1', F_values, 'sigma_1', sigma_values)
         # plot_logL_2d(F_values, sigma_values, logL_grid, xlabel='F_1', ylabel='sigma_1', savefig='logL/' + savefig)
 
         cosi.display_model(savefig='FF/' + savefig)
 
         # cosi.display_model(savefig=None)
+        # logL = cosi.get_log_like()
         # logL = cosi.get_log_like_null_hypothesis()
         # LRT = cosi.get_LRT()
         # with open('results/' + savefig[:-4] + '.txt', 'w') as f:
