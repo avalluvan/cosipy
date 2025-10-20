@@ -118,7 +118,7 @@ class COSILike(PluginPrototype):
             hist = Histogram.open(self.precomputed_psr_file)
             self.image_response = PointSourceResponse(hist.axes,
                                                       contents=hist.contents,
-                                                      sparse=hist._sparse,
+                                                      sparse=hist.is_sparse,
                                                       unit=hist.unit)
             # in the near future, we will implement ExtendedSourceResponse class, which should be used here (HY).
             # probably, it is better to move this loading part outside of this class. Then, we don't have to load the response everytime we start the fitting (HY).
