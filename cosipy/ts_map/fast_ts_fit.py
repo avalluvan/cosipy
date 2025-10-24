@@ -1,7 +1,7 @@
 from histpy import Histogram, Axis, Axes
 import h5py as h5
 import sys
-from cosipy import SpacecraftFile
+from cosipy import SpacecraftHistory
 from cosipy.response import PointSourceResponse
 import healpy as hp
 from mhealpy import HealpixMap
@@ -37,7 +37,7 @@ class FastTSMap():
             Background model, which includes the background counts to model the background in the observed data.
         response_path : str or pathlib.Path
             The path to the response file.
-        orientation : cosipy.SpacecraftFile, optional
+        orientation : cosipy.SpacecraftHistory, optional
             The orientation of the spacecraft when data are collected (the default is `None`, which implies the orientation file is not needed).
         cds_frame : str, optional
             "local" or "galactic", it's the Compton data space (CDS) frame of the data, bkg_model and the response. In other words, they should have the same cds frame (the default is "local", which implied that a local frame that attached to the spacecraft).
@@ -204,7 +204,7 @@ class FastTSMap():
             The spectrum of the source.
         cds_frame : str, optional
             "local" or "galactic", it's the Compton data space (CDS) frame of the data, bkg_model and the response. In other words, they should have the same cds frame.
-        orientation : cosipy.spacecraftfile.SpacecraftFile, optional
+        orientation : cosipy.spacecraftfile.SpacecraftHistory, optional
             The orientation of the spacecraft when data are collected (the default is `None`, which implies the orientation file is not needed).
         
         Returns
@@ -288,7 +288,7 @@ class FastTSMap():
             The flattened Compton data space (CDS) array of the data.
         bkg_model_cds_array : numpy.ndarray
             The flattened Compton data space (CDS) array of the background model.
-        orientation : cosipy.spacecraftfile.SpacecraftFile
+        orientation : cosipy.spacecraftfile.SpacecraftHistory
             The orientation of the spacecraft when data are collected. 
         response_path : str or pathlib.Path
             The path to the response file.

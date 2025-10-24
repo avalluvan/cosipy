@@ -85,7 +85,7 @@ class SourceInjector():
             The spectrum model defined from `astromodels`.
         coordinate : astropy.coordinates.SkyCoord
             The coordinate of the point source.
-        orientation : cosipy.spacecraftfile.SpacecraftFile, option
+        orientation : cosipy.spacecraftfile.SpacecraftHistory, option
             The orientation of the telescope during the mock simulation. This is needed when using a detector response. (the default is `None`, which means a galactic response is used.
         source_name : str, optional
             The name of the source (the default is `point_source`).

@@ -5,7 +5,7 @@ from scoords import SpacecraftFrame
 
 from cosipy.polarization import PolarizationASAD
 from cosipy.polarization.conventions import IAUPolarizationConvention, MEGAlibRelativeZ
-from cosipy.spacecraftfile import SpacecraftFile
+from cosipy.spacecraftfile import SpacecraftHistory
 from cosipy import UnBinnedData
 from cosipy.threeml.custom_functions import Band_Eflux
 from cosipy import test_data
@@ -13,7 +13,7 @@ from cosipy import test_data
 analysis = UnBinnedData(test_data.path / 'polarization_data.yaml')
 data = analysis.get_dict_from_hdf5(test_data.path / 'polarization_data.hdf5')
 response_path = test_data.path / 'test_polarization_response.h5'
-sc_orientation = SpacecraftFile.parse_from_file(test_data.path / 'polarization_ori.ori')
+sc_orientation = SpacecraftHistory.open(test_data.path / 'polarization_ori.ori')
 attitude = sc_orientation.get_attitude()[0]
 
 a = 10. * u.keV

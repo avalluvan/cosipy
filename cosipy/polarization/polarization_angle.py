@@ -7,7 +7,8 @@ from .conventions import PolarizationConvention
 
 class PolarizationAngle:
 
-    def __init__(self, angle, skycoord ,
+    def __init__(self, angle,
+                 skycoord: SkyCoord = None,
                  convention = 'iau',
                  *args, **kwargs):
         """
@@ -18,7 +19,7 @@ class PolarizationAngle:
         angle : :py:class:`astropy.coordinates.Angle
             Polarization angle
         skycoord : :py:class:`astropy.coordinates.SkyCoord`
-            Source direction
+            Source direction. Optional, but needed to use vector() and transform_to()
         convention : PolarizationConvention
             Convention the defined the polarization basis and direction in 
             the polarization plane (for which the source direction is normal)
@@ -49,11 +50,18 @@ class PolarizationAngle:
     def skycoord(self):
         return self._skycoord
 
+    @skycoord.setter
+    def skycoord(self, coord: SkyCoord):
+        self._skycoord = coord
+
     @property
     def vector(self):
         """
         Direction of the electric field vector
         """
+
+        if self.skycoord is None:
+            raise RuntimeError("Set skycoord first")
 
         # Get the projection vectors for the source direction in the current convention
         px, py = self.convention.get_basis(self.skycoord)
@@ -73,6 +81,9 @@ class PolarizationAngle:
                         frame = self.convention.frame)
     
     def transform_to(self, convention, *args, **kwargs):
+
+        if self.skycoord is None:
+            raise RuntimeError("Set skycoord first")
 
         # Standarize convention 2
         convention2 = PolarizationConvention.get_convention(convention, *args, **kwargs)

@@ -67,7 +67,7 @@ class SpacecraftAttitudeExposureTable(pd.DataFrame):
 
         Parameters
         ----------
-        orientation : :py:class:`cosipy.spacecraftfile.SpacecraftFile` 
+        orientation : :py:class:`cosipy.spacecraftfile.SpacecraftHistory` 
             Orientation
         nside : int
             Healpix NSIDE parameter.
@@ -101,7 +101,7 @@ class SpacecraftAttitudeExposureTable(pd.DataFrame):
 
         Parameters
         ----------
-        orientation : :py:class:`cosipy.spacecraftfile.SpacecraftFile` 
+        orientation : :py:class:`cosipy.spacecraftfile.SpacecraftHistory` 
             Orientation
         nside : int
             Healpix NSIDE parameter.
@@ -305,7 +305,7 @@ class SpacecraftAttitudeExposureTable(pd.DataFrame):
         columns.append(column_healpix_index_x_pointing)
     
         column_delta_time = fits.Column(name='delta_time', format='PD()', unit = 's',
-                                        array=np.array(self['delta_time'].array, dtype=np.object_))
+                                        array=np.array(self['delta_time'].cache, dtype=np.object_))
         columns.append(column_delta_time)    
         
         column_zpointing_l = fits.Column(name='zpointing_l', format='PD()', unit = 'degree',

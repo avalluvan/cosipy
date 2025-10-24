@@ -31,7 +31,7 @@ class PolarizationASAD():
         Binned or unbinned data, or list of binned/unbinned data if separated in time
     background : dict or cosipy.data_io.BinnedData
         Binned or unbinned background model
-    sc_orientation : cosipy.spacecraftfile.SpacecraftFile.SpacecraftFile
+    sc_orientation : cosipy.spacecraftfile.SpacecraftHistory.SpacecraftHistory
         Spacecraft orientation
     response_file : str or pathlib.Path
         Path to detector response

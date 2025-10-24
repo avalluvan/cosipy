@@ -9,7 +9,7 @@ from histpy import Histogram, HealpixAxis, Axis
 
 from cosipy import test_data
 from cosipy.response import FullDetectorResponse
-from cosipy.spacecraftfile import SpacecraftFile
+from cosipy.spacecraftfile import SpacecraftHistory
 
 response_path = test_data.path / "test_full_detector_response.h5"
 orientation_path = test_data.path / "20280301_first_10sec.ori"
@@ -77,7 +77,7 @@ def test_get_interp_response():
 
 def test_get_extended_source_response():
 
-    orientation = SpacecraftFile.parse_from_file(orientation_path)
+    orientation = SpacecraftHistory.open(orientation_path)
 
     with FullDetectorResponse.open(response_path) as response:
 
@@ -96,7 +96,7 @@ def test_get_extended_source_response():
 
 def test_merge_psr_to_extended_source_response(tmp_path):
 
-    orientation = SpacecraftFile.parse_from_file(orientation_path)
+    orientation = SpacecraftHistory.open(orientation_path)
 
     with FullDetectorResponse.open(response_path) as response:
 

@@ -2,13 +2,13 @@ from histpy import Histogram
 
 from cosipy import test_data
 from cosipy.image_deconvolution import SpacecraftAttitudeExposureTable
-from cosipy.spacecraftfile import SpacecraftFile
+from cosipy.spacecraftfile import SpacecraftHistory
 
 def test_exposure_table(tmp_path):
 
     nside = 1
 
-    ori = SpacecraftFile.parse_from_file(test_data.path / "20280301_first_10sec.ori")
+    ori = SpacecraftHistory.open(test_data.path / "20280301_first_10sec.ori")
 
     assert SpacecraftAttitudeExposureTable.analyze_orientation(ori, nside=nside, start=None, stop=ori.get_time()[-1], min_exposure=0, min_num_pointings=1) == None
 

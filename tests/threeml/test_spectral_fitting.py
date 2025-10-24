@@ -1,5 +1,5 @@
 from cosipy import COSILike, test_data, BinnedData
-from cosipy.spacecraftfile import SpacecraftFile
+from cosipy.spacecraftfile import SpacecraftHistory
 import astropy.units as u
 import numpy as np
 from threeML import Band, PointSource, Model, JointLikelihood, DataList
@@ -8,7 +8,7 @@ from astropy.coordinates import SkyCoord
 
 data_path = test_data.path
 
-sc_orientation = SpacecraftFile.parse_from_file(data_path / "20280301_2s.ori")
+sc_orientation = SpacecraftHistory.open(data_path / "20280301_2s.ori")
 dr = str(data_path / "test_full_detector_response.h5") # path to detector response
 
 data = BinnedData(data_path / "test_spectral_fit.yaml")

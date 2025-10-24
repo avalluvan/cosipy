@@ -31,6 +31,8 @@ tutorials:
           unzip: True # Optional. False by default
           #unzip_output: # Optional, if the unzipped file name is different from just removing the .zip or .gz
 
+    test_must_fail_magic:
+       notebook: test/test_must_fail_magic.ipynb
 
     dataIO:
       notebook: DataIO/DataIO_example.ipynb
@@ -42,7 +44,7 @@ tutorials:
           checksum: 408edb7dc2e3dce44c0f275e4ba56fd8
 
     spacecraft_file:
-      notebook: response/SpacecraftFile.ipynb
+      notebook: response/SpacecraftHistory.ipynb
       wasabi_files:
         COSI-SMEX/DC2/Data/Orientation/20280301_3_month_with_orbital_info.ori:
           checksum: 416fcc296fc37a056a069378a2d30cb2

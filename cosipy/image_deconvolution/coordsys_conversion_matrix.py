@@ -38,7 +38,7 @@ class CoordsysConversionMatrix(Histogram):
         ----------
         full_detector_response : :py:class:`cosipy.response.FullDetectorResponse`
             Response
-        orientation : :py:class:`cosipy.spacecraftfile.SpacecraftFile`
+        orientation : :py:class:`cosipy.spacecraftfile.SpacecraftHistory`
             Orientation
         time_intervals : :py:class:`np.array`
             The same format of binned_data.axes['Time'].edges
