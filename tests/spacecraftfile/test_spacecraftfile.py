@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from astropy.time import Time
 
+from cosipy.response import FullDetectorResponse
+
 energy_edges = 10**np.linspace(2, 4, 10 + 1) # ten bins from 100 to 10000 KeV
 
 def test_get_time():
@@ -122,20 +124,25 @@ def test_get_dwell_map():
     target_coord = SkyCoord(l=184.5551, b = -05.7877, unit = (u.deg, u.deg), frame = "galactic")
     path_in_sc = ori.get_target_in_sc_frame(target_coord)
 
-    dwell_map = ori.get_dwell_map(response = response_path,
+    response = FullDetectorResponse.open(response_path)
+
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc)
 
     assert np.allclose(dwell_map[:].value,
                        np.array([1.895057, 7.615584, 0.244679, 0.244679, 0.000000, 0.000000,
                                 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000]))
 
-    dwell_map = ori.get_dwell_map(response = response_path,
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc,
                                   interp = False)
+
+    response.close()
 
     assert np.allclose(dwell_map[:].value,
                        np.array([ 0., 10.,  0.,  0.,  0., 0.,
                                   0.,  0.,  0.,  0.,  0.,  0.]))
+
 
 def test_get_scatt_map():
 
@@ -161,10 +168,14 @@ def test_get_psr_rsp():
     target_coord = SkyCoord(l=184.5551, b = -05.7877, unit = (u.deg, u.deg), frame = "galactic")
     path_in_sc = ori.get_target_in_sc_frame(target_coord)
 
-    dwell_map = ori.get_dwell_map(response = response_path,
+    response = FullDetectorResponse.open(response_path)
+
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc)
 
     Ei_edges, Ei_lo, Ei_hi, Em_edges, Em_lo, Em_hi, areas, matrix = ori.get_psr_rsp(response_path, dwell_map)
+
+    response.close()
 
     assert np.allclose(Ei_edges, energy_edges)
 
@@ -226,7 +237,9 @@ def test_get_arf():
 
     path_in_sc = ori.get_target_in_sc_frame(target_coord)
 
-    dwell_map = ori.get_dwell_map(response = response_path,
+    response = FullDetectorResponse.open(response_path)
+
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc)
 
     _ = ori.get_psr_rsp(response_path, dwell_map)
@@ -243,6 +256,8 @@ def test_get_arf():
                        np.array([ 9.07843857, 35.97189941, 56.56903076, 58.62650146, 53.77538452,
                                   46.66890564, 37.5471283, 25.56105347, 18.39017029, 10.23398438]))
 
+    response.close()
+
     os.remove("test.arf")
 
 def test_get_rmf():
@@ -256,7 +271,9 @@ def test_get_rmf():
 
     path_in_sc = ori.get_target_in_sc_frame(target_coord)
 
-    dwell_map = ori.get_dwell_map(response = response_path,
+    response = FullDetectorResponse.open(response_path)
+
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc)
 
     _ = ori.get_psr_rsp(response_path, dwell_map)
@@ -290,6 +307,8 @@ def test_get_rmf():
                                  0.04464257135987282,  0.08521296828985214,   0.11213855445384979,   0.04982832074165344,   0.041276346892118454,
                                  0.09142732620239258,  0.22900591790676117,   0.30159470438957214,   0.035725388675928116]))
 
+    response.close()
+
     os.remove("test.rmf")
 
 
@@ -303,7 +322,10 @@ def test_get_pha():
     target_coord = SkyCoord(l=184.5551, b = -05.7877, unit = (u.deg, u.deg), frame = "galactic")
 
     path_in_sc = ori.get_target_in_sc_frame(target_coord)
-    dwell_map = ori.get_dwell_map(response = response_path,
+
+    response = FullDetectorResponse.open(response_path)
+
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc)
     _ = ori.get_psr_rsp(response_path, dwell_map)
     ori.get_arf(out_name = "test")
@@ -315,6 +337,8 @@ def test_get_pha():
     errors = np.sqrt(counts)
 
     ori.get_pha(src_counts=counts, errors=errors, exposure_time=10)
+
+    response.close()
 
     os.remove("test.arf")
     os.remove("test.rmf")
@@ -341,10 +365,15 @@ def test_plot_arf():
     target_coord = SkyCoord(l=184.5551, b = -05.7877, unit = (u.deg, u.deg), frame = "galactic")
 
     path_in_sc = ori.get_target_in_sc_frame(target_coord)
-    dwell_map = ori.get_dwell_map(response = response_path,
+
+    response = FullDetectorResponse.open(response_path)
+
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc)
     _ = ori.get_psr_rsp(response_path, dwell_map)
     ori.get_arf(out_name = "test")
+
+    response.close()
 
     ori.plot_arf()
 
@@ -363,7 +392,10 @@ def test_plot_rmf():
     target_coord = SkyCoord(l=184.5551, b = -05.7877, unit = (u.deg, u.deg), frame = "galactic")
 
     path_in_sc = ori.get_target_in_sc_frame(target_coord)
-    dwell_map = ori.get_dwell_map(response = response_path,
+
+    response = FullDetectorResponse.open(response_path)
+
+    dwell_map = ori.get_dwell_map(base = response,
                                   src_path = path_in_sc)
     _ = ori.get_psr_rsp(response_path, dwell_map)
     ori.get_rmf(out_name = "test")
@@ -372,8 +404,11 @@ def test_plot_rmf():
 
     assert Path("Redistribution_matrix_for_test.png").exists()
 
+    response.close()
+
     os.remove("test.rmf")
     os.remove("Redistribution_matrix_for_test.png")
+
 
 def test_source_interval():
 
@@ -390,7 +425,6 @@ def test_source_interval():
 
     assert np.allclose(np.sum(new_ori.livetime), (2.1 - 0.1))
 
-    print(new_ori.z_pointings.b.value)
     assert np.allclose(new_ori.x_pointings.l.value,
                        np.array([41.86062429, 41.88225011, 41.90629597, 41.90870524]))
     assert np.allclose(new_ori.x_pointings.b.value,

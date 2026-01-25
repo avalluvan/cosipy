@@ -85,7 +85,6 @@ class PolarizationASAD():
 
         self._source = source
 
-        self._response_file = response_file
         self._response = FullDetectorResponse.open(response_file, pa_convention=self._response_convention)
 
         self._spectral_flux = get_integrated_spectral_model(source_spectrum, self._response.axes['Ei'])
@@ -309,8 +308,7 @@ class PolarizationASAD():
             # source is in spacecraft-local frame
             source = self._source.transform_to('galactic')
             target_in_sc_frame = self._ori.get_target_in_sc_frame(source)
-            dwell_time_map = self._ori.get_dwell_map(response=self._response_file,
-                                                     pa_convention=self._response_convention,
+            dwell_time_map = self._ori.get_dwell_map(base=self._response,
                                                      src_path=target_in_sc_frame)
             psr = self._response.get_point_source_response(coord=source,
                                                            exposure_map=dwell_time_map)

@@ -24,7 +24,7 @@ class CoordsysConversionMatrix(Histogram):
                          labels = labels, axis_scale = axis_scale, sparse = sparse, unit = unit,
                          copy_contents = copy_contents)
 
-        self.binning_method = binning_method #'ScAtt'
+        self.binning_method = binning_method #'Time' or 'ScAtt'
 
     def copy(self):
         new = super().copy()
@@ -32,7 +32,7 @@ class CoordsysConversionMatrix(Histogram):
         return new
 
     @classmethod
-    def spacecraft_attitude_binning_ccm(cls, full_detector_response, exposure_table, nside_model = None, use_averaged_pointing = False):
+    def from_exposure_table(cls, exposure_table, full_detector_response, nside_model = None, scheme_model = 'ring', use_averaged_pointing = False, earth_occ = True, r_earth = 6378.0):
         """
         Calculate a ccm from a given exposure_table.
 
@@ -44,6 +44,7 @@ class CoordsysConversionMatrix(Histogram):
             Scatt exposure table
         nside_model : int or None, default None
             If it is None, it will be the same as the NSIDE in the response.
+        scheme_model: str, default ring
         use_averaged_pointing : bool, default False
             If it is True, first the averaged Z- and X-pointings are calculated.
             Then the dwell time map is calculated once for ach model pixel and each scatt_binning_index.
@@ -51,44 +52,47 @@ class CoordsysConversionMatrix(Histogram):
             Then the calculated dwell time maps are summed up.
             In the former case, the computation is fast but may lose the angular resolution.
             In the latter case, the conversion matrix is more accurate but it takes a long time to calculate it.
+        earth_occ: bool, default True
+            If it is True, the earth occultation is considered.
+        r_earth : float, default 6378.0
+            Earth's radius in kilometers.
 
         Returns
         -------
         :py:class:`cosipy.image_deconvolution.CoordsysConversionMatrix'
-            Its axes are [ "ScAtt", "lb", "NuLambda" ].
+            Its axes are [ "ScAtt" or "Time", "lb", "NuLambda" ].
         """
 
         if nside_model is None:
             nside_model = full_detector_response.nside
-        is_nest_model = True if exposure_table.scheme == 'nest' else False
+        is_nest_model = True if scheme_model == 'nest' else False
         nside_local = full_detector_response.nside
 
-        n_scatt_bins = len(exposure_table)
+        n_bins = len(exposure_table)
 
-        axis_scatt = Axis(edges = np.arange(n_scatt_bins+1), label = "ScAtt")
-        axis_model_map = HealpixAxis(nside = nside_model, coordsys = "galactic", scheme = exposure_table.scheme, label = "lb")
+        axis_binning = Axis(edges = np.arange(n_bins+1), label = exposure_table.binning_method)
+        axis_model_map = HealpixAxis(nside = nside_model, coordsys = "galactic", scheme = scheme_model, label = "lb")
         axis_local_map = full_detector_response.axes["NuLambda"]
 
-        axis_coordsys_conv_matrix = Axes((axis_scatt, axis_model_map, axis_local_map), copy_axes=False) #lb, ScAtt, NuLambda
+        axis_coordsys_conv_matrix = Axes((axis_binning, axis_model_map, axis_local_map), copy_axes=False)
 
         contents = []
 
-        for i_scatt_bin in tqdm(range(n_scatt_bins)):
+        for i_bin in tqdm(range(n_bins)):
             ccm_thispix = np.zeros((axis_model_map.nbins, axis_local_map.nbins)) # without unit
 
-            row = exposure_table.iloc[i_scatt_bin]
+            row = exposure_table.iloc[i_bin]
 
-            scatt_binning_index = row['scatt_binning_index']
+            binning_index = row[exposure_table.binning_index_name]
             num_pointings = row['num_pointings']
-            #healpix_index = row['healpix_index']
             zpointing = row['zpointing']
             xpointing = row['xpointing']
             zpointing_averaged = row['zpointing_averaged']
             xpointing_averaged = row['xpointing_averaged']
             earth_zenith = row['earth_zenith']
             altitude = row['altitude']
-            delta_time = row['delta_time']
-            exposure = row['exposure']
+            livetime = row['livetime']
+            total_livetime = row['total_livetime']
 
             if use_averaged_pointing:
                 z = SkyCoord([zpointing_averaged[0]], [zpointing_averaged[1]], frame="galactic", unit="deg")
@@ -100,8 +104,8 @@ class CoordsysConversionMatrix(Histogram):
             attitude = Attitude.from_axes(x = x, z = z, frame = 'galactic')
 
             # exposure map calculation including earth occultation
-            exposure_time_map = cls._calc_exposure_time_map(nside_model, num_pointings, earth_zenith, altitude, delta_time,
-                                                            is_nest_model = is_nest_model)
+            exposure_time_map = cls._calc_exposure_time_map(nside_model, num_pointings, earth_zenith, altitude, livetime,
+                                                            is_nest_model = is_nest_model, earth_occ = earth_occ, r_earth = r_earth)
 
             # ccm
             for ipix in range(hp.nside2npix(nside_model)):
@@ -138,12 +142,12 @@ class CoordsysConversionMatrix(Histogram):
                                    unit = u.s,
                                    copy_contents = False)
 
-        coordsys_conv_matrix.binning_method = 'ScAtt'
+        coordsys_conv_matrix.binning_method = exposure_table.binning_method
 
         return coordsys_conv_matrix
 
     @classmethod
-    def _calc_exposure_time_map(cls, nside_model, num_pointings, earth_zenith, altitude, delta_time, is_nest_model = False, r_earth = 6378.0):
+    def _calc_exposure_time_map(cls, nside_model, num_pointings, earth_zenith, altitude, livetime, is_nest_model = False, earth_occ = True, r_earth = 6378.0):
         """
         Calculate exposure time map considering Earth occultation.
 
@@ -163,10 +167,12 @@ class CoordsysConversionMatrix(Histogram):
             in galactic coordinates [longitude, latitude] in degrees for each pointing.
         altitude : numpy.ndarray
             Array of spacecraft altitudes in kilometers for each pointing.
-        delta_time : numpy.ndarray
-            Array of time intervals in seconds for each pointing.
+        livetime : numpy.ndarray
+            Array of livetimes in seconds for each pointing.
         is_nest_model : bool, default False
             If True, use nested HEALPix pixel ordering scheme. If False, use ring ordering.
+        earth_occ: bool, default True
+            If it is True, the earth occultation is considered.
         r_earth : float, default 6378.0
             Earth's radius in kilometers.
 
@@ -183,9 +189,12 @@ class CoordsysConversionMatrix(Histogram):
         exposure_time_map = np.zeros((num_pointings, npix_model))
 
         for i_pointing in range(num_pointings):
-            earth_radius = np.pi - np.arcsin(r_earth / (r_earth + altitude[i_pointing])) #rad
-            filling_pixel_index = hp.query_disc(nside_model, hp.ang2vec(earth_zenith[i_pointing,0], earth_zenith[i_pointing,1], lonlat = True), nest = is_nest_model, radius = earth_radius)
-            exposure_time_map[i_pointing][filling_pixel_index] = delta_time[i_pointing]
+            if earth_occ:
+                earth_radius = np.pi - np.arcsin(r_earth / (r_earth + altitude[i_pointing])) #rad
+                filling_pixel_index = hp.query_disc(nside_model, hp.ang2vec(earth_zenith[i_pointing,0], earth_zenith[i_pointing,1], lonlat = True), nest = is_nest_model, radius = earth_radius)
+                exposure_time_map[i_pointing][filling_pixel_index] = livetime[i_pointing]
+            else:
+                exposure_time_map[i_pointing, :] = livetime[i_pointing]
 
         return exposure_time_map
 
@@ -236,7 +245,7 @@ class CoordsysConversionMatrix(Histogram):
         exposure_map_contents = tensordot_sparse(self.contents, self.unit,
                                                  effective_area.contents, axes = ([2],[0]))
         # ["ScAtt", "lb", "NuLambda"] x ["NuLambda", "Ei"]
-        exposure_map_axes = [self.axes['ScAtt'], self.axes['lb'], effective_area.axes['Ei']]
+        exposure_map_axes = [self.axes[self.binning_method], self.axes['lb'], effective_area.axes['Ei']]
 
         exposure_map = Histogram(exposure_map_axes, exposure_map_contents)
 

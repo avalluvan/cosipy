@@ -423,7 +423,17 @@ class UnBinnedData(DataIO):
                         'Distance':dist,
                         'Chi galactic':chi_gal,
                         'Psi galactic':psi_gal,
-                       'Compton Seq':CO_seq} 
+                       'Compton Seq':CO_seq}
+                
+        #For simulation the timetags are shuffle so we need to sort it by ascending order
+        # Build sorting index
+        logger.info("Sorting the dictionary by ascending TimeTags")        
+        idx = np.argsort(cosi_dataset["TimeTags"])
+
+        # Reorder all columns using the same index
+        for key in cosi_dataset:
+            cosi_dataset[key] = cosi_dataset[key][idx]        
+        
         self.cosi_dataset = cosi_dataset
 
         # Option to write unbinned data to file (either fits or hdf5):
