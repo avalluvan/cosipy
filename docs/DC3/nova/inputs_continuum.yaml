@@ -5,7 +5,7 @@ data_file: "" # full path
 ori_file: "" # full path
 unbinned_output: 'fits' # 'fits' or 'hdf5'
 time_bins: 1296000 # time bin size in seconds. Takes int, float, or list of bin edges.
-energy_bins: [  100.   ,   158.489,   251.189,   398.107,   630.957,  1000., 1584.89 ,  2511.89 ,  3981.07 ,  6309.57 , 10000.   ] # [509, 513] # [476., 480.] # [470., 472., 474., 476., 478., 480.] # Takes list. Needs to match response.
+energy_bins: [100., 158.489, 251.189, 398.107, 630.957, 1000., 1584.89 , 2511.89, 3981.07, 6309.57 , 10000.] # [476., 480.] # [470., 472., 474., 476., 478., 480.] # Takes list. Needs to match response.
 phi_pix_size: 6 # binning of Compton scattering anlge [deg]
 nside: 8 # healpix binning of psi chi local
 scheme: 'ring' # healpix binning of psi chi local
