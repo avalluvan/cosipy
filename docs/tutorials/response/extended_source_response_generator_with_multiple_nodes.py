@@ -7,16 +7,16 @@ logger = logging.getLogger('cosipy')
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
-from cosipy.spacecraftfile import SpacecraftFile
+from cosipy.spacecraftfile import SpacecraftHistory
 from cosipy.response import FullDetectorResponse, ExtendedSourceResponse
 
 # file path
 full_detector_response_path = "SMEXv12.Continuum.HEALPixO3_10bins_log_flat.binnedimaging.imagingresponse.nonsparse_nside8.area.good_chunks_unzip.h5"
-orientation_path = "20280301_3_month_with_orbital_info.ori"
+orientation_path = "20280301_3_month_with_orbital_info.fits"
 
 # load response and orientation
 full_detector_response = FullDetectorResponse.open(full_detector_response_path)
-orientation = SpacecraftFile.parse_from_file(orientation_path)
+orientation = SpacecraftHistory.open(orientation_path)
 
 # set the healpix pixel index list
 ipix_image_list = [int(_) for _ in sys.argv[1:]]
