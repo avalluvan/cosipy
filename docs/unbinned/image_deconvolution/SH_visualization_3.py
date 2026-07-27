@@ -4,12 +4,14 @@ from matplotlib.colors import Normalize
 from scipy.special import sph_harm_y
 from scipy.spatial.transform import Rotation
 from scipy.ndimage import gaussian_filter1d
+from scipy.interpolate import interp1d
 
 import spherical
 import quaternionic
 from copy import deepcopy
 
 c_kms    = 3e5       
+N_SAMPLES = 100_000
 
 # ── Build surfaces ──
 def spherical_to_cartesian(Y, THETA, PHI):
@@ -144,15 +146,15 @@ def get_doppler_spectrum(V_los, Y_vel, weights, v_max=5000, sigma_kev=7.5/2.355,
     # ── Convert keV smoothing to km/s ──
     # Doppler: ΔE/E = v/c  →  σ_v = (σ_E / E_0) * c                       # speed of light in km/s
     sigma_v  = (sigma_kev / E_line_kev) * c_kms  # km/s
-    print(f"Spectral smoothing: {sigma_kev} keV → {sigma_v:.1f} km/s")
+    # print(f"Spectral smoothing: {sigma_kev} keV → {sigma_v:.1f} km/s")
 
     # ── Sample ──
-    n_samples = 100_000
+    n_samples = N_SAMPLES
     indices   = np.random.choice(V_los_physical.size, size=n_samples, p=weights.ravel())
     v_sampled = V_los_physical.ravel()[indices]
 
     # ── Histogram ──
-    bins        = np.linspace(-2 * v_max, 2 * v_max, nbins)
+    bins        = np.linspace(-12000, 12000, nbins)
     counts, edges = np.histogram(v_sampled, bins=bins)
     bin_centers   = 0.5 * (edges[:-1] + edges[1:])
 
@@ -170,7 +172,7 @@ def plot_doppler_spectrum(counts, edges, bin_centers, counts_smooth, v_max=5000,
     ax.plot(bin_centers, counts_smooth, label=f'Smoothed ({sigma_kev:.2f} keV)')
     ax.set_xlabel("Line-of-sight velocity (km/s)")
     ax.set_ylabel("Counts")
-    ax.set_xlim(-2 * v_max, 2 * v_max)
+    ax.set_xlim(-12000, 12000)
     # ax2 = ax.twiny()
     # ax2.plot(E_line_kev + bin_centers / c_kms * E_line_kev, counts_smooth, label=f'Smoothed ({sigma_kev:.2f} keV)')
     ax.axvline(0, color='k', lw=1, ls='--')
