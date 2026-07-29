@@ -110,6 +110,31 @@ def sum_modes(modes, THETA, PHI, sum_type='signed'):
 
     return Y_sum
 
+def get_doppler_inputs(density_modes, velocity_modes, THETA, PHI, sum_type='unsigned'):
+    """
+    Evaluate density and velocity fields from mode lists and compute
+    sampling weights and line-of-sight velocity.
+
+    Returns
+    -------
+    density : dict with keys 'Y', 'x', 'y', 'z'
+    velocity : dict with keys 'Y', 'x', 'y', 'los'
+    weights  : solid-angle weighted density, normalized
+    """
+    Y_den = sum_modes(density_modes, THETA, PHI, sum_type=sum_type)   # density field
+    Y_vel = sum_modes(velocity_modes, THETA, PHI, sum_type=sum_type)  # velocity field
+
+    rho_x, rho_y, rho_z = spherical_to_cartesian(Y_den, THETA, PHI)
+    V_x,   V_y,   V_los = spherical_to_cartesian(Y_vel, THETA, PHI)   # Z_cart = line-of-sight
+
+    weights  = Y_den * np.sin(THETA)                # solid-angle weighted density (full form would be sin(THETA) * dtheta * dphi but the latter are constants that will get normalized out)
+    weights /= weights.sum()                        # normalize to probability
+
+    density  = dict(Y=Y_den, x=rho_x, y=rho_y, z=rho_z)
+    velocity = dict(Y=Y_vel, x=V_x,   y=V_y,   z=V_los)
+
+    return density, velocity, weights
+
 # ── Plotting ──
 
 def plot_field(X, Y, Z, Y_sum, cmap='Blues', ex=0.5):
@@ -121,7 +146,10 @@ def plot_field(X, Y, Z, Y_sum, cmap='Blues', ex=0.5):
     plt.colorbar(sc, shrink=0.6)#, label=fr'Y$_{}$')
     return
 
-def plot_two_fields(rho_x, rho_y, rho_z, Y_den, V_x, V_y, V_los, Y_vel, cmap='Blues', ex=0.5):
+def plot_two_fields(density, velocity, cmap='Blues', ex=0.5):
+    Y_den, rho_x, rho_y, rho_z = density['Y'], density['x'], density['y'], density['z']
+    Y_vel, V_x, V_y, V_los     = velocity['Y'], velocity['x'], velocity['y'], velocity['z']
+
     fig, axs = plt.subplots(1, 2, figsize=(18, 9), subplot_kw={'projection': '3d'})
 
     sc = axs[0].scatter(rho_x, rho_y, rho_z, s=1, c=Y_den, cmap=cmap, norm=Normalize(vmin=0, vmax=Y_den.max()))
@@ -137,7 +165,7 @@ def plot_two_fields(rho_x, rho_y, rho_z, Y_den, V_x, V_y, V_los, Y_vel, cmap='Bl
 
 # ── Doppler Spectrum ──
 
-def get_doppler_spectrum(V_los, Y_vel, weights, v_max=5000, sigma_kev=7.5/2.355, E_line_kev=1157.0, nbins=300):
+def get_doppler_spectrum(V_los, Y_vel, weights, v_max=5000, sigma_kev=7.5/2.355, E_line_kev=1157.0, nbins=300, n_samples = N_SAMPLES):
 
     # ── Scale V_los to physical velocities ──
     # Normalize by the max of the velocity field, then scale to v_max
@@ -149,7 +177,6 @@ def get_doppler_spectrum(V_los, Y_vel, weights, v_max=5000, sigma_kev=7.5/2.355,
     # print(f"Spectral smoothing: {sigma_kev} keV → {sigma_v:.1f} km/s")
 
     # ── Sample ──
-    n_samples = N_SAMPLES
     indices   = np.random.choice(V_los_physical.size, size=n_samples, p=weights.ravel())
     v_sampled = V_los_physical.ravel()[indices]
 
