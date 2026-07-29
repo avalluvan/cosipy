@@ -146,19 +146,27 @@ def plot_field(X, Y, Z, Y_sum, cmap='Blues', ex=0.5):
     plt.colorbar(sc, shrink=0.6)#, label=fr'Y$_{}$')
     return
 
-def plot_two_fields(density, velocity, cmap='Blues', ex=0.5):
-    Y_den, rho_x, rho_y, rho_z = density['Y'], density['x'], density['y'], density['z']
+def plot_two_fields(velocity, density, cmap='Blues', ex=0.5, show_morphology=False):
     Y_vel, V_x, V_y, V_los     = velocity['Y'], velocity['x'], velocity['y'], velocity['z']
+    Y_den, rho_x, rho_y, rho_z = density['Y'], density['x'], density['y'], density['z']
 
     fig, axs = plt.subplots(1, 2, figsize=(18, 9), subplot_kw={'projection': '3d'})
 
-    sc = axs[0].scatter(rho_x, rho_y, rho_z, s=1, c=Y_den, cmap=cmap, norm=Normalize(vmin=0, vmax=Y_den.max()))
+    sc = axs[0].scatter(V_x, V_y, V_los, s=1, c=Y_vel, cmap=cmap, norm=Normalize(vmin=-0, vmax=Y_vel.max()))
     axs[0].set_xlim(-ex, ex); axs[0].set_ylim(-ex, ex); axs[0].set_zlim(-ex, ex)
-    axs[0].set_title('Density')
+    axs[0].set_title('Velocity')
 
-    sc = axs[1].scatter(V_x, V_y, V_los, s=1, c=Y_vel, cmap=cmap, norm=Normalize(vmin=-0, vmax=Y_vel.max()))
+    indices = ...#np.sort(np.random.choice(np.arange(len(V_x.ravel())), size=28800, replace=False))
+    if show_morphology:
+        sc = axs[1].scatter(V_x.ravel()[indices], V_y.ravel()[indices], V_los.ravel()[indices], s=1, c=Y_den.ravel()[indices], cmap=cmap, alpha=1, norm=Normalize(vmin=0, vmax=Y_den.max()))
+        axs[1].set_title('Density (with Remnant Morphology)')       # Assumes homologous expansion of ejecta on prescribed velocity field
+    else:
+        X, Y, Z = spherical_to_cartesian(np.ones_like(THETA) / np.sqrt(4*np.pi), THETA, PHI)
+        sc = axs[1].scatter(X.ravel()[indices], Y.ravel()[indices], Z.ravel()[indices], s=1, cmap=cmap,
+                            c=Y_den.ravel()[indices], norm=Normalize(vmin=0, vmax=Y_den.max()))
+        axs[1].set_title('Density (projected on Sphere)')
+
     axs[1].set_xlim(-ex, ex); axs[1].set_ylim(-ex, ex); axs[1].set_zlim(-ex, ex)
-    axs[1].set_title('Velocity')
 
     plt.colorbar(sc, ax=axs, shrink=0.6)
     return
