@@ -1,9 +1,7 @@
 from pathlib import Path
+from typing import Union, Optional
 
 import numpy as np
-
-import astropy.units as u
-import astropy.constants as c
 
 from astropy.time import Time
 from astropy.coordinates import (
@@ -15,22 +13,22 @@ from astropy.coordinates import (
     cartesian_to_spherical
 )
 from astropy.units import Quantity
+import astropy.units as u
 from astropy.table import QTable
 from astropy.io import fits
 
 from mhealpy import HealpixBase, HealpixMap
 
-from histpy import Histogram, TimeAxis, HealpixAxis, Axis
+from histpy import Axis, HealpixAxis
 
 from scoords import Attitude, SpacecraftFrame
 
 from .scatt_map import SpacecraftAttitudeMap
 from cosipy.event_selection import GoodTimeInterval
 
-from typing import Union, Optional
-
 import logging
 logger = logging.getLogger(__name__)
+
 
 __all__ = ["SpacecraftHistory"]
 
@@ -47,7 +45,7 @@ class SpacecraftHistory:
                  obstime: Time,
                  attitude: Attitude,
                  location: GCRS,
-                 livetime: u.Quantity = None):
+                 livetime: Quantity = None):
         """Handles the spacecraft orientation. Calculates the dwell time
         map and point source response over a certain orientation
         period.
@@ -336,6 +334,13 @@ class SpacecraftHistory:
 
         t = QTable.read(filename)
 
+        #Convert EVERY column to native byte order ---
+        for colname in t.colnames:
+            col = t[colname]
+            t[colname] = np.astype(col, col.dtype.newbyteorder('='), copy=False)
+        
+            
+        
         # make sure we have version info, and that we support this version
         if "VERSION" not in t.meta:
             raise ValueError("FITS orientation file has no version info")
@@ -908,10 +913,7 @@ class SpacecraftHistory:
         new_location = None
         new_livetime = None
 
-        for i, (start, stop) in enumerate(zip(gti.tstart_list, gti.tstop_list)):
-        # TODO: this line can be replaced with the following line
-        # after the PR in the develop branch is merged.
-        #for i, (start, stop) in enumerate(gti):
+        for i, (start, stop) in enumerate(gti):
             _sph = self.select_interval(start, stop)
 
             _obstime = _sph.obstime
@@ -1108,7 +1110,7 @@ class SpacecraftHistory:
 
         lon_sc, colat_sc = self._get_target_in_sc_frame(source_attframe_vec)
 
-        return SkyCoord(lon = lon_sc, lat = np.pi/2 - colat_sc, units = 'rad', frame = SpacecraftFrame())
+        return SkyCoord(lon = lon_sc, lat = np.pi/2 - colat_sc, unit = 'rad', frame = SpacecraftFrame())
 
     def _get_target_in_sc_frame(self, source: np.ndarray) -> (np.ndarray, np.ndarray):
         """
@@ -1434,3 +1436,33 @@ class SpacecraftHistory:
         lon   = np.arctan2(v[:,1], v[:,0])
         colat = np.arccos(v[:,2])
         return (lon, colat)
+    
+    def update_ephemeris(self, ephemeris, intervals):
+        """
+        Adjust the mission livetime in-place based on a pulsar phase selection.
+
+        Parameters
+        ----------
+        ephemeris : PhaseEphemeris
+            An object adhering to the PhaseEphemeris Protocol.
+        intervals : list of tuple of float
+            A list of (start_phase, stop_phase) intervals.
+        """
+        exposed_durations = ephemeris.get_duty_cycle(
+            self.intervals_tstart, 
+            self.intervals_tstop, 
+            intervals
+        )
+        
+        bin_durations = (self.intervals_tstop - self.intervals_tstart).to(u.s)
+        
+        fraction = np.zeros_like(bin_durations.value)
+        valid_bins = bin_durations > 0
+        fraction[valid_bins] = (exposed_durations[valid_bins] / bin_durations[valid_bins]).decompose().value
+        
+        if hasattr(self, '_livetime_hist') and self._livetime_hist is not None:
+            # Legacy handling if a histpy object was manually injected
+            self._livetime_hist.contents[:] = self._livetime_hist.contents * fraction
+        else:
+            # Standard cosipy SpacecraftHistory storage natively uses _livetime
+            self._livetime = self.livetime * fraction
