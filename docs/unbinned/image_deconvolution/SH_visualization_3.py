@@ -13,6 +13,19 @@ from copy import deepcopy
 c_kms    = 3e5       
 N_SAMPLES = 100_000
 
+THETA = None
+PHI = None
+
+def setup_grid(n_theta=120, n_phi=240):
+    global THETA, PHI
+    theta_1d = np.linspace(0, np.pi, n_theta)
+    phi_1d = np.linspace(0, 2 * np.pi, n_phi)
+    THETA, PHI = np.meshgrid(theta_1d, phi_1d)
+    print(f"Grid initialized: {n_theta}x{n_phi}")
+
+# Initialize with defaults on import
+setup_grid()
+
 # ── Build surfaces ──
 def spherical_to_cartesian(Y, THETA, PHI):
     return (Y * np.sin(THETA) * np.cos(PHI),
@@ -215,3 +228,71 @@ def plot_doppler_spectrum(counts, edges, bin_centers, counts_smooth, v_max=5000,
     ax.set_title(f"Doppler Spectrum — 1157 keV line   v_max={v_max} km/s")
     plt.tight_layout()
     plt.show()
+
+# ── Forward Model ──
+
+# For each mode: [amplitude, theta_rot, phi_rot]
+# l, m, sum_type are fixed model structure choices
+
+def params_to_modes(params, l_den, l_vel):
+    n_den = len(l_den)
+    n_vel = len(l_vel)
+    n_params_expected = 3 * (n_den + n_vel) + 1
+    if len(params) != n_params_expected:
+        raise ValueError(
+            f"params length mismatch: got {len(params)}, "
+            f"expected {n_params_expected} "
+            f"(3×{n_den} density + 3×{n_vel} velocity + 1 v_max)."
+        )
+
+    density_modes, velocity_modes = [], []
+
+    for i, l in enumerate(l_den):
+        A, t, p = params[3*i : 3*i+3]
+        density_modes.append(make_mode(l=l, m=0, theta_rot=t, phi_rot=p, amplitude=A))
+
+    offset = 3 * n_den
+    for j, l in enumerate(l_vel):
+        A, t, p = params[offset + 3*j : offset + 3*j+3]
+        velocity_modes.append(make_mode(l=l, m=0, theta_rot=t, phi_rot=p, amplitude=A))
+
+    v_max = params[-1]
+    return density_modes, velocity_modes, v_max
+
+def forward_model(params, l_den, l_vel, sigma_kev=7.5/2.355, E_line_kev=1157.0, nbins=300):
+    """Full forward pass: params → spectrum."""
+    density_modes, velocity_modes, v_max = params_to_modes(params, l_den, l_vel)
+
+    Y_den = sum_modes(density_modes, THETA, PHI, sum_type='unsigned')
+    Y_vel = sum_modes(velocity_modes, THETA, PHI, sum_type='unsigned')
+
+    _, _, V_los = spherical_to_cartesian(Y_vel, THETA, PHI)
+
+    weights  = Y_den * np.sin(THETA)
+    weights /= weights.sum()
+
+    _, _, bin_centers, counts_smooth = get_doppler_spectrum(
+        V_los, Y_vel, weights, v_max=v_max,
+        sigma_kev=sigma_kev, E_line_kev=E_line_kev, nbins=nbins
+    )
+    
+    return bin_centers, counts_smooth
+
+def forward_model_pdf(params, l_den, l_vel, sigma_kev=7.5/2.355, E_line_kev=1157.0, nbins=300):
+    """Full forward pass: params → spectrum."""
+    density_modes, velocity_modes, v_max = params_to_modes(params, l_den, l_vel)
+
+    Y_den = sum_modes(density_modes, THETA, PHI, sum_type='unsigned')
+    Y_vel = sum_modes(velocity_modes, THETA, PHI, sum_type='unsigned')
+
+    _, _, V_los = spherical_to_cartesian(Y_vel, THETA, PHI)
+
+    weights  = Y_den * np.sin(THETA)
+    weights /= weights.sum()
+
+    _, _, bin_centers, counts_smooth = get_doppler_spectrum(
+        V_los, Y_vel, weights, v_max=v_max,
+        sigma_kev=sigma_kev, E_line_kev=E_line_kev, nbins=nbins
+    )
+
+    return interp1d(bin_centers, counts_smooth / counts_smooth.sum(), bounds_error=False, fill_value=1e-300)
