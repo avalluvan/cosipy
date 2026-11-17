@@ -433,24 +433,66 @@ class MockTimingModel:
 
 def test_update_ephemeris_scaling():
     """Test that SpacecraftHistory natively scales its exposure array in-place."""
-    
+
     # Load the standard 10-second test file
     ori_path = test_data.path / "20280301_first_10sec.ori"
     ori = SpacecraftHistory.open(ori_path)
-    
+
     # Extract the original livetime array (should be ~1.0s per bin)
     original_livetime = np.copy(ori.livetime.to_value(u.s))
-    
+
     # Initialize our dummy protocol and arbitrary intervals
     dummy_model = MockTimingModel()
-    intervals = [(0.0, 0.4)] 
-    
+    intervals = [(0.0, 0.4)]
+
     # Run the native update method!
     ori.update_ephemeris(dummy_model, intervals)
-    
-    # Verify the math: Every bin in the new livetime should be exactly 40% 
+
+    # Verify the math: Every bin in the new livetime should be exactly 40%
     # of what it originally was
     np.testing.assert_allclose(
-        ori.livetime.to_value(u.s), 
+        ori.livetime.to_value(u.s),
         original_livetime * 0.40
     )
+
+def test_interp_attitude_slerp():
+    """Constant angular velocity between the samples, also when their quaternions have
+    opposite signs (q and -q are the same rotation)."""
+
+    from scipy.spatial.transform import Rotation
+    from scoords import Attitude
+
+    axis = np.array([0.3, -0.5, 0.8]) / np.linalg.norm([0.3, -0.5, 0.8])
+    start = Rotation.from_euler('zyx', [10, 20, 30], degrees=True)
+    step = Rotation.from_rotvec(np.deg2rad(8) * axis)
+    q1, q2 = start.as_quat(), (step * start).as_quat()
+
+    for sign in (1, -1):
+        att1 = Attitude.from_quat(q1, frame='galactic')
+        att2 = Attitude.from_quat(sign * q2, frame='galactic')
+
+        for t in (0.25, 0.5, 0.75):
+            interp = SpacecraftHistory._interp_attitude(np.array(t), att1, att2)
+            expected = Rotation.from_rotvec(t * np.deg2rad(8) * axis) * start
+            angle = (Rotation.from_quat(interp.as_quat()) * expected.inv()).magnitude()
+            assert angle < 1e-9
+
+
+def test_direct_init_no_livetime():
+    # exercise default behavior for livetime
+
+    ori_path = test_data.path / "20280301_first_10sec.fits"
+
+    ori = SpacecraftHistory.open(ori_path)
+
+    ori2 = SpacecraftHistory(ori.obstime,
+                             ori.attitude,
+                             ori.location,
+                             livetime=None)
+
+    assert np.allclose(ori.livetime,
+                       u.Quantity([1, 1, 1,
+                                   1, 1, 1,
+                                   1, 1, 1,
+                                   1],
+                                  unit = u.s))

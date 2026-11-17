@@ -39,7 +39,7 @@ class SpacecraftHistory:
 
     # radius of earth
     _r_earth = 6378.0
-    _far_dist = 1*u.Mpc
+    _far_dist = "1 Mpc"
 
     def __init__(self,
                  obstime: Time,
@@ -80,7 +80,7 @@ class SpacecraftHistory:
                                label= 'obstime_dt_jd')
 
         if livetime is None:
-            livetime = time_axis.widths.to(u.s)
+            livetime = (obstime[1:] - obstime[:-1]).to(u.s)
 
         self._livetime = livetime
 
@@ -338,9 +338,9 @@ class SpacecraftHistory:
         for colname in t.colnames:
             col = t[colname]
             t[colname] = np.astype(col, col.dtype.newbyteorder('='), copy=False)
-        
-            
-        
+
+
+
         # make sure we have version info, and that we support this version
         if "VERSION" not in t.meta:
             raise ValueError("FITS orientation file has no version info")
@@ -540,7 +540,7 @@ class SpacecraftHistory:
         # Make the distance very far away such that the parallax
         # between earth-centered and barycenter doesn't matter
         zenith_gal = SkyCoord(l = earth_lon, b = earth_lat,
-                              distance = SpacecraftHistory._far_dist,
+                              distance = Quantity(SpacecraftHistory._far_dist),
                               frame = Galactic(),
                               copy = False)
         gcrs = zenith_gal.transform_to('gcrs')
@@ -583,7 +583,7 @@ class SpacecraftHistory:
 
         # Make it far field o get galactic coordinates
         gcrs_far = GCRS(ra = gcrs.ra, dec = gcrs.dec,
-                        distance = SpacecraftHistory._far_dist,
+                        distance = Quantity(SpacecraftHistory._far_dist),
                         copy = False)
         zenith_gal = gcrs_far.transform_to(Galactic())
 
@@ -677,18 +677,26 @@ class SpacecraftHistory:
         p1 = att1.as_quat()
         p2 = att2.as_quat()
 
-        # angle between quaternions p1, p2 (xyzw order)
-        theta = 2 * np.arccos(np.einsum('i...,i...->...',
-                                        p1.transpose(),
-                                        p2.transpose()))
+        cos_theta = np.einsum('i...,i...->...', p1.transpose(), p2.transpose())
+
+        # q and -q are the same rotation: interpolate along the shorter arc
+        sign = np.where(cos_theta < 0, -1., 1.)
+        p2 = sign[..., np.newaxis] * p2
+
+        # angle between quaternions p1, p2 as 4D unit vectors (xyzw order)
+        theta = np.arccos(np.clip(np.abs(cos_theta), -1, 1))
 
         # Makes it work with scalars or any input shape
         t = t[..., np.newaxis]
         theta = theta[..., np.newaxis]
 
-        # SLERP interpolated quaternion
-        den = np.sin(theta)
-        pi = (np.sin((1 - t) * theta) * p1 + np.sin(t * theta) * p2) / den
+        # SLERP interpolated quaternion, linear for (nearly) equal quaternions
+        with np.errstate(divide='ignore', invalid='ignore'):
+            den = np.sin(theta)
+            small = theta < 1e-8
+            w1 = np.where(small, 1 - t, np.sin((1 - t) * theta) / den)
+            w2 = np.where(small, t, np.sin(t * theta) / den)
+        pi = w1 * p1 + w2 * p2
 
         return Attitude.from_quat(pi, frame=att1.frame)
 
@@ -1436,7 +1444,7 @@ class SpacecraftHistory:
         lon   = np.arctan2(v[:,1], v[:,0])
         colat = np.arccos(v[:,2])
         return (lon, colat)
-    
+
     def update_ephemeris(self, ephemeris, intervals):
         """
         Adjust the mission livetime in-place based on a pulsar phase selection.
@@ -1449,17 +1457,17 @@ class SpacecraftHistory:
             A list of (start_phase, stop_phase) intervals.
         """
         exposed_durations = ephemeris.get_duty_cycle(
-            self.intervals_tstart, 
-            self.intervals_tstop, 
+            self.intervals_tstart,
+            self.intervals_tstop,
             intervals
         )
-        
+
         bin_durations = (self.intervals_tstop - self.intervals_tstart).to(u.s)
-        
+
         fraction = np.zeros_like(bin_durations.value)
         valid_bins = bin_durations > 0
         fraction[valid_bins] = (exposed_durations[valid_bins] / bin_durations[valid_bins]).decompose().value
-        
+
         if hasattr(self, '_livetime_hist') and self._livetime_hist is not None:
             # Legacy handling if a histpy object was manually injected
             self._livetime_hist.contents[:] = self._livetime_hist.contents * fraction
